@@ -1,43 +1,19 @@
--- =============================================================================
---  EduPlan · Sistema web para la organización académica con asistente de IA
---  Archivo : database/init/01_schema.sql
---  Motor   : PostgreSQL 16
---  Objetivo: Crear la estructura completa de la base de datos compartida.
---
---  Diseño:
---    * Una sola instancia de PostgreSQL compartida por ambos microservicios.
---    * Tablas separadas por servicio mediante ESQUEMAS de PostgreSQL:
---        - auth       -> pertenece a ms-auth       (usuarios)
---        - academico  -> pertenece a ms-academico  (materias, tareas, apuntes,
---                                                   planes_estudio)
---    * Cada registro académico guarda el usuario_id dueño (RF09).
---
---  Este script se ejecuta automáticamente la PRIMERA vez que arranca el
---  contenedor de PostgreSQL (carpeta /docker-entrypoint-initdb.d).
--- =============================================================================
+
 
 BEGIN;
 
--- -----------------------------------------------------------------------------
--- 1. Extensiones
--- -----------------------------------------------------------------------------
--- gen_random_uuid() viene incluido en PostgreSQL 13+, pgcrypto se deja por
--- compatibilidad. citext permite comparar correos sin distinguir mayúsculas.
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
 
--- -----------------------------------------------------------------------------
--- 2. Esquemas (uno por microservicio)
--- -----------------------------------------------------------------------------
+
 CREATE SCHEMA IF NOT EXISTS auth;
 COMMENT ON SCHEMA auth IS 'Tablas del microservicio ms-auth (autenticación y usuarios)';
 
 CREATE SCHEMA IF NOT EXISTS academico;
 COMMENT ON SCHEMA academico IS 'Tablas del microservicio ms-academico (materias, tareas, apuntes e IA)';
 
--- -----------------------------------------------------------------------------
--- 3. Función genérica para mantener la columna actualizado_en
--- -----------------------------------------------------------------------------
+
 CREATE OR REPLACE FUNCTION public.fn_set_actualizado_en()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -50,15 +26,8 @@ $$;
 COMMENT ON FUNCTION public.fn_set_actualizado_en() IS
     'Actualiza automáticamente la columna actualizado_en en cada UPDATE';
 
--- =============================================================================
---  ESQUEMA auth  (ms-auth)
--- =============================================================================
 
--- -----------------------------------------------------------------------------
--- auth.usuarios
---   Se registra/busca al usuario después del flujo OAuth 2.0 con Google
---   (RF01, HU01). No se guardan contraseñas: la identidad la da Google.
--- -----------------------------------------------------------------------------
+
 CREATE TABLE auth.usuarios (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     google_id        VARCHAR(64)   NOT NULL,
@@ -90,22 +59,14 @@ CREATE TRIGGER trg_usuarios_actualizado_en
     BEFORE UPDATE ON auth.usuarios
     FOR EACH ROW EXECUTE FUNCTION public.fn_set_actualizado_en();
 
--- =============================================================================
---  ESQUEMA academico  (ms-academico)
--- =============================================================================
 
--- -----------------------------------------------------------------------------
--- Tipos enumerados
--- -----------------------------------------------------------------------------
 CREATE TYPE academico.prioridad_tarea AS ENUM ('baja', 'media', 'alta');
 COMMENT ON TYPE academico.prioridad_tarea IS 'Prioridad de una tarea (HU03)';
 
 CREATE TYPE academico.estado_tarea AS ENUM ('pendiente', 'en_progreso', 'completada');
 COMMENT ON TYPE academico.estado_tarea IS 'Estado de una tarea (HU04, RF04)';
 
--- -----------------------------------------------------------------------------
--- academico.materias   (RF03, HU02)
--- -----------------------------------------------------------------------------
+
 CREATE TABLE academico.materias (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     usuario_id       UUID          NOT NULL,
@@ -125,7 +86,7 @@ CREATE TABLE academico.materias (
     CONSTRAINT ck_materias_color  CHECK (color ~ '^#[0-9A-Fa-f]{6}$')
 );
 
--- Un estudiante no puede repetir el nombre de una materia (sin importar mayúsculas)
+
 CREATE UNIQUE INDEX uq_materias_usuario_nombre
     ON academico.materias (usuario_id, lower(nombre));
 
@@ -137,9 +98,7 @@ CREATE TRIGGER trg_materias_actualizado_en
     BEFORE UPDATE ON academico.materias
     FOR EACH ROW EXECUTE FUNCTION public.fn_set_actualizado_en();
 
--- -----------------------------------------------------------------------------
--- academico.tareas   (RF04, RF06, HU03, HU04, HU05)
--- -----------------------------------------------------------------------------
+
 CREATE TABLE academico.tareas (
     id               UUID                       PRIMARY KEY DEFAULT gen_random_uuid(),
     usuario_id       UUID                       NOT NULL,
@@ -166,7 +125,6 @@ CREATE TABLE academico.tareas (
     )
 );
 
--- Índices pensados para los filtros de RF06 (materia, estado, fecha límite)
 CREATE INDEX ix_tareas_usuario_materia ON academico.tareas (usuario_id, materia_id);
 CREATE INDEX ix_tareas_usuario_estado  ON academico.tareas (usuario_id, estado);
 CREATE INDEX ix_tareas_usuario_fecha   ON academico.tareas (usuario_id, fecha_limite);
@@ -175,7 +133,7 @@ COMMENT ON TABLE  academico.tareas               IS 'Tareas con fecha de entrega
 COMMENT ON COLUMN academico.tareas.fecha_limite  IS 'Fecha y hora de entrega (con zona horaria)';
 COMMENT ON COLUMN academico.tareas.completada_en IS 'Se llena automáticamente al marcar la tarea como completada';
 
--- Llena/limpia completada_en según el estado (HU04)
+
 CREATE OR REPLACE FUNCTION academico.fn_tareas_completada_en()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -198,9 +156,7 @@ CREATE TRIGGER trg_tareas_actualizado_en
     BEFORE UPDATE ON academico.tareas
     FOR EACH ROW EXECUTE FUNCTION public.fn_set_actualizado_en();
 
--- -----------------------------------------------------------------------------
--- academico.apuntes   (RF05, RF07, HU06, HU07)
--- -----------------------------------------------------------------------------
+
 CREATE TABLE academico.apuntes (
     id                   UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     usuario_id           UUID          NOT NULL,
@@ -235,11 +191,7 @@ CREATE TRIGGER trg_apuntes_actualizado_en
     BEFORE UPDATE ON academico.apuntes
     FOR EACH ROW EXECUTE FUNCTION public.fn_set_actualizado_en();
 
--- -----------------------------------------------------------------------------
--- academico.planes_estudio   (RF08, HU08)
---   Historial de planes de estudio sugeridos por la IA a partir de las
---   tareas pendientes del usuario.
--- -----------------------------------------------------------------------------
+
 CREATE TABLE academico.planes_estudio (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     usuario_id       UUID          NOT NULL,
@@ -263,9 +215,7 @@ COMMENT ON COLUMN academico.planes_estudio.contenido        IS 'Texto del plan d
 COMMENT ON COLUMN academico.planes_estudio.tareas_incluidas IS 'IDs de las tareas pendientes que se enviaron a la IA';
 COMMENT ON COLUMN academico.planes_estudio.modelo_ia        IS 'Modelo usado (ej. claude, gemini, gpt)';
 
--- -----------------------------------------------------------------------------
--- 4. Vista de apoyo: resumen de tareas por materia (útil para el dashboard)
--- -----------------------------------------------------------------------------
+
 CREATE VIEW academico.v_resumen_materias AS
 SELECT
     m.id                                                         AS materia_id,

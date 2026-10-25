@@ -1,4 +1,4 @@
-# Variables de entorno (credenciales)
+
 .env
 .env.*
 !.env.example

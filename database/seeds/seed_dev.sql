@@ -1,40 +1,24 @@
--- =============================================================================
---  EduPlan · database/seeds/seed_dev.sql
---  Datos de PRUEBA para desarrollo (NO se ejecuta en producción).
---
---  Ejecutar con:
---    docker compose exec -T postgres psql -U eduplan_admin -d eduplan < database/seeds/seed_dev.sql
---
---  Los google_id son ficticios: cuando inicies sesión con tu cuenta real de
---  Google, ms-auth creará tu propio usuario.
--- =============================================================================
+
 
 BEGIN;
 
--- Limpia datos anteriores (en orden por las llaves foráneas)
 TRUNCATE academico.planes_estudio, academico.apuntes, academico.tareas,
          academico.materias, auth.usuarios RESTART IDENTITY CASCADE;
 
--- -----------------------------------------------------------------------------
--- Usuarios
--- -----------------------------------------------------------------------------
+
 INSERT INTO auth.usuarios (id, google_id, email, nombre, rol, ultimo_acceso) VALUES
 ('11111111-1111-1111-1111-111111111111', 'google-demo-0001', 'ana.lopez@ejemplo.com',  'Ana López',     'estudiante',    NOW()),
 ('22222222-2222-2222-2222-222222222222', 'google-demo-0002', 'carlos.perez@ejemplo.com','Carlos Pérez', 'estudiante',    NOW()),
 ('33333333-3333-3333-3333-333333333333', 'google-demo-0003', 'admin@eduplan.com',       'Administrador', 'administrador', NOW());
 
--- -----------------------------------------------------------------------------
--- Materias
--- -----------------------------------------------------------------------------
+
 INSERT INTO academico.materias (id, usuario_id, nombre, docente, descripcion, color) VALUES
 ('a0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Desarrollo Web I',     'Ing. Guillermo Pisqui', 'Microservicios, Docker y APIs REST', '#2563EB'),
 ('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Base de Datos II',     'Ing. María Castillo',   'Modelado relacional y SQL avanzado', '#9333EA'),
 ('a0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'Matemática Discreta',  'Lic. Roberto Méndez',   NULL,                                  '#16A34A'),
 ('a0000000-0000-0000-0000-000000000004', '22222222-2222-2222-2222-222222222222', 'Programación III',     'Ing. Sofía Ramírez',    'Estructuras de datos',               '#EA580C');
 
--- -----------------------------------------------------------------------------
--- Tareas (fechas relativas a hoy para que siempre haya pendientes y vencidas)
--- -----------------------------------------------------------------------------
+
 INSERT INTO academico.tareas (usuario_id, materia_id, titulo, descripcion, fecha_limite, prioridad, estado) VALUES
 ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'Diagrama de arquitectura',       'Entregar el diagrama del proyecto final',     NOW() - INTERVAL '2 days', 'alta',  'completada'),
 ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'Modelo relacional en el repo',   'Subir scripts SQL y diagrama ER a GitHub',    NOW() + INTERVAL '2 days', 'alta',  'en_progreso'),
@@ -44,9 +28,7 @@ INSERT INTO academico.tareas (usuario_id, materia_id, titulo, descripcion, fecha
 ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000003', 'Guía de grafos',                 'Ejercicios 1 al 15',                          NOW() + INTERVAL '10 days','baja',  'pendiente'),
 ('22222222-2222-2222-2222-222222222222', 'a0000000-0000-0000-0000-000000000004', 'Implementar árbol AVL',          'Inserción y rotaciones',                      NOW() + INTERVAL '5 days', 'alta',  'pendiente');
 
--- -----------------------------------------------------------------------------
--- Apuntes
--- -----------------------------------------------------------------------------
+
 INSERT INTO academico.apuntes (usuario_id, materia_id, titulo, contenido) VALUES
 ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'Qué es un proxy inverso',
  'Un proxy inverso como Nginx recibe todas las peticiones del cliente y las reenvía al servicio interno que corresponde según la ruta. Permite tener un único punto de entrada, terminar TLS y ocultar los puertos internos de los microservicios.'),
@@ -55,15 +37,12 @@ INSERT INTO academico.apuntes (usuario_id, materia_id, titulo, contenido) VALUES
 ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000002', 'Formas normales',
  '1FN: valores atómicos. 2FN: sin dependencias parciales de la llave. 3FN: sin dependencias transitivas entre atributos no llave.');
 
--- Un apunte con resumen de IA ya generado (ejemplo de RF07)
 UPDATE academico.apuntes
    SET resumen_ia = 'JWT = header + payload + firma; se valida en cada petición y debe expirar.',
        resumen_generado_en = NOW()
  WHERE titulo = 'JWT';
 
--- -----------------------------------------------------------------------------
--- Plan de estudio de ejemplo (RF08)
--- -----------------------------------------------------------------------------
+
 INSERT INTO academico.planes_estudio (usuario_id, fecha_inicio, fecha_fin, contenido, tareas_incluidas, modelo_ia)
 SELECT '11111111-1111-1111-1111-111111111111',
        CURRENT_DATE,

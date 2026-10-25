@@ -1,14 +1,8 @@
-# =============================================================================
-#  EduPlan · docker-compose.yml
-#  FASE 2: PostgreSQL + ms-auth.
-#  En las siguientes fases se agregan: ms-academico, frontend y nginx.
-# =============================================================================
+
 name: eduplan
 
 services:
-  # ---------------------------------------------------------------------------
-  # Base de datos compartida
-  # ---------------------------------------------------------------------------
+
   postgres:
     image: postgres:16-alpine
     container_name: eduplan-postgres
@@ -23,11 +17,9 @@ services:
       PGTZ: America/Guatemala
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Los scripts de esta carpeta se ejecutan en orden alfabético
-      # SOLO la primera vez (cuando el volumen está vacío).
+      
       - ./database/init:/docker-entrypoint-initdb.d:ro
-    # Puerto expuesto solo en tu máquina para usar pgAdmin/DBeaver en desarrollo.
-    # En producción se ELIMINA: la base solo es accesible dentro de eduplan-net.
+   
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     healthcheck:
@@ -38,9 +30,6 @@ services:
     networks:
       - eduplan-net
 
-  # ---------------------------------------------------------------------------
-  # Microservicio 1: autenticación y usuarios
-  # ---------------------------------------------------------------------------
   ms-auth:
     build: ./ms-auth
     container_name: eduplan-ms-auth
@@ -59,8 +48,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Fase 2: expuesto en tu máquina para probarlo directamente.
-    # En la Fase 5 se quita y solo Nginx podrá llegar a él.
+
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
