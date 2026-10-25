@@ -191,14 +191,16 @@ docker compose up -d postgres
 # Ver logs de la inicialización
 docker compose logs postgres
 
-# Cargar datos de prueba
-docker compose exec -T postgres psql -U eduplan_admin -d eduplan < database/seeds/seed_dev.sql
+# Cargar datos de prueba (funciona igual en PowerShell, CMD y Linux)
+docker compose cp database/seeds/seed_dev.sql postgres:/tmp/seed_dev.sql
+docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/seed_dev.sql
 
 # Entrar a la consola SQL
 docker compose exec postgres psql -U eduplan_admin -d eduplan
 
 # Recrear la base desde cero (BORRA todos los datos)
-docker compose down -v && docker compose up -d postgres
+docker compose down -v
+docker compose up -d postgres
 ```
 
 Dentro de `psql`: `\dn` lista esquemas, `\dt auth.*` y `\dt academico.*` listan tablas, `\d academico.tareas` muestra la estructura de una tabla.
