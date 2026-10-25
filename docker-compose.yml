@@ -1,0 +1,81 @@
+# =============================================================================
+#  EduPlan · docker-compose.yml
+#  FASE 2: PostgreSQL + ms-auth.
+#  En las siguientes fases se agregan: ms-academico, frontend y nginx.
+# =============================================================================
+name: eduplan
+
+services:
+  # ---------------------------------------------------------------------------
+  # Base de datos compartida
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: eduplan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MS_AUTH_DB_PASSWORD: ${MS_AUTH_DB_PASSWORD}
+      MS_ACADEMICO_DB_PASSWORD: ${MS_ACADEMICO_DB_PASSWORD}
+      TZ: America/Guatemala
+      PGTZ: America/Guatemala
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Los scripts de esta carpeta se ejecutan en orden alfabético
+      # SOLO la primera vez (cuando el volumen está vacío).
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    # Puerto expuesto solo en tu máquina para usar pgAdmin/DBeaver en desarrollo.
+    # En producción se ELIMINA: la base solo es accesible dentro de eduplan-net.
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eduplan-net
+
+  # ---------------------------------------------------------------------------
+  # Microservicio 1: autenticación y usuarios
+  # ---------------------------------------------------------------------------
+  ms-auth:
+    build: ./ms-auth
+    container_name: eduplan-ms-auth
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      DATABASE_URL: ${MS_AUTH_DATABASE_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
+      FRONTEND_URL: ${FRONTEND_URL}
+      TZ: America/Guatemala
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Fase 2: expuesto en tu máquina para probarlo directamente.
+    # En la Fase 5 se quita y solo Nginx podrá llegar a él.
+    ports:
+      - "127.0.0.1:3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/auth/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - eduplan-net
+
+volumes:
+  pgdata:
+    name: eduplan_pgdata
+
+networks:
+  eduplan-net:
+    name: eduplan-net
