@@ -2,7 +2,6 @@
 name: eduplan
 
 services:
-
   postgres:
     image: postgres:16-alpine
     container_name: eduplan-postgres
@@ -19,7 +18,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       
       - ./database/init:/docker-entrypoint-initdb.d:ro
-   
+    
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     healthcheck:
@@ -30,6 +29,7 @@ services:
     networks:
       - eduplan-net
 
+ 
   ms-auth:
     build: ./ms-auth
     container_name: eduplan-ms-auth
@@ -48,11 +48,39 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
+    
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/auth/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - eduplan-net
+
+
+  ms-academico:
+    build: ./ms-academico
+    container_name: eduplan-ms-academico
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3002
+      DATABASE_URL: ${MS_ACADEMICO_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      TZ: America/Guatemala
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3002:3002"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/api/health"]
       interval: 15s
       timeout: 5s
       retries: 3
