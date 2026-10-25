@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EduPlan · Prueba de ms-auth</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 32px auto; padding: 0 16px; color: #1f2937; background: #f8fafc; }
+    h1 { font-size: 1.4rem; }
+    .tarjeta { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0; }
+    button, a.boton { display: inline-block; padding: 10px 16px; border-radius: 8px; border: 0; background: #2563eb; color: #fff; font-size: .95rem; cursor: pointer; text-decoration: none; margin: 4px 4px 4px 0; }
+    button.secundario { background: #475569; }
+    button.peligro { background: #dc2626; }
+    pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; font-size: .85rem; }
+    .error { color: #b91c1c; font-weight: 600; }
+    small { color: #64748b; }
+  </style>
+</head>
+<body>
+  <h1>EduPlan · Prueba de ms-auth</h1>
+  <p><small>Página de desarrollo para probar OAuth 2.0 + JWT antes de tener el frontend. No existe en producción.</small></p>
+
+  <div class="tarjeta">
+    <a class="boton" href="/auth/google">Iniciar sesión con Google</a>
+    <button class="secundario" id="btnMe">Probar GET /auth/me</button>
+    <button class="peligro" id="btnLogout">Cerrar sesión</button>
+  </div>
+
+  <div class="tarjeta">
+    <strong>Estado</strong>
+    <p id="estado">Sin sesión.</p>
+    <strong>JWT</strong>
+    <pre id="token">—</pre>
+    <strong>Contenido del token (payload)</strong>
+    <pre id="payload">—</pre>
+    <strong>Respuesta</strong>
+    <pre id="respuesta">—</pre>
+  </div>
+
+  <script>
+    const CLAVE = 'eduplan_token';
+    const $ = (id) => document.getElementById(id);
+
+    function leerToken() {
+      try { return localStorage.getItem(CLAVE); } catch { return null; }
+    }
+
+    function decodificar(token) {
+      const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(decodeURIComponent(escape(atob(base64))));
+    }
+
+    function pintar() {
+      const token = leerToken();
+      if (!token) {
+        $('estado').textContent = 'Sin sesión.';
+        $('token').textContent = '—';
+        $('payload').textContent = '—';
+        return;
+      }
+      const p = decodificar(token);
+      $('estado').textContent = `Sesión activa como ${p.nombre}. Expira: ${new Date(p.exp * 1000).toLocaleString()}`;
+      $('token').textContent = token;
+      $('payload').textContent = JSON.stringify(p, null, 2);
+    }
+
+    // 1) Al volver de Google, el token (o el error) llega en el fragmento #
+    const fragmento = new URLSearchParams(location.hash.slice(1));
+    if (fragmento.get('token')) {
+      try { localStorage.setItem(CLAVE, fragmento.get('token')); } catch {}
+    }
+    if (fragmento.get('error')) {
+      $('respuesta').innerHTML = `<span class="error">Error: ${fragmento.get('error')}</span>`;
+    }
+    history.replaceState(null, '', location.pathname); // quita el token de la URL
+    pintar();
+
+    // 2) Petición protegida con Authorization: Bearer <JWT>
+    $('btnMe').onclick = async () => {
+      const r = await fetch('/auth/me', { headers: { Authorization: `Bearer ${leerToken()}` } });
+      $('respuesta').textContent = `${r.status}\n` + JSON.stringify(await r.json(), null, 2);
+    };
+
+    // 3) Cerrar sesión = eliminar el token del cliente (RF11)
+    $('btnLogout').onclick = async () => {
+      const token = leerToken();
+      if (token) {
+        await fetch('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      }
+      try { localStorage.removeItem(CLAVE); } catch {}
+      $('respuesta').textContent = 'Token eliminado del navegador.';
+      pintar();
+    };
+  </script>
+</body>
+</html>
