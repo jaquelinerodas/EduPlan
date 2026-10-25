@@ -39,16 +39,19 @@ Esquema de BD: `auth` (tabla `usuarios`). Detalle completo en **[ms-auth/README.
 |---|---|---|---|
 | GET/POST | `/api/materias` | Listar / crear materias | RF03 |
 | GET/PUT/DELETE | `/api/materias/:id` | Ver / editar / eliminar una materia | RF03 |
-| GET/POST | `/api/tareas` | Listar (filtros `materia`, `estado`, `desde`, `hasta`) / crear tareas | RF04, RF06 |
+| GET/POST | `/api/tareas` | Listar (filtros `materiaId`, `estado`, `prioridad`, `desde`, `hasta`, `vencidas`) / crear tareas | RF04, RF06 |
 | GET/PUT/DELETE | `/api/tareas/:id` | Ver / editar / eliminar una tarea | RF04 |
 | PATCH | `/api/tareas/:id/estado` | Marcar como completada o cambiar estado | HU04 |
 | GET/POST | `/api/apuntes` | Listar / crear apuntes por materia | RF05 |
 | GET/PUT/DELETE | `/api/apuntes/:id` | Ver / editar / eliminar un apunte | RF05 |
 | POST | `/api/ia/resumen/:apunteId` | Genera el resumen de un apunte con IA | RF07 |
 | POST | `/api/ia/plan-estudio` | Sugiere un plan según tareas pendientes | RF08 |
-| GET | `/api/health` | Estado del servicio | HU10 |
+| GET | `/api/ia/planes` | Historial de planes de estudio generados | RF08 |
+| GET | `/api/resumen` | Totales para el panel principal | — |
+| GET | `/api/health` | Estado del servicio, base de datos e IA | HU10 |
+| GET | `/api/docs` | Documentación Swagger | — |
 
-Todas las rutas (excepto `health`) exigen `Authorization: Bearer <JWT>` y solo devuelven datos del usuario del token (RF09). Esquema de BD: `academico`.
+Todas las rutas (excepto `health` y `docs`) exigen `Authorization: Bearer <JWT>` y solo devuelven datos del usuario del token (RF09). Esquema de BD: `academico`. Detalle completo en **[ms-academico/README.md](ms-academico/README.md)**.
 
 ### nginx · Proxy inverso (puertos 80/443)
 Punto único de entrada (RF10): sirve el frontend, enruta `/auth/` → ms-auth y `/api/` → ms-academico, y termina TLS.
@@ -74,7 +77,7 @@ erDiagram
 eduplan/
 ├── database/          # Modelo relacional, scripts de inicialización y datos de prueba
 ├── ms-auth/           # Microservicio 1: OAuth 2.0 + JWT
-├── ms-academico/      # Microservicio 2 (Fase 3)
+├── ms-academico/      # Microservicio 2: materias, tareas, apuntes e IA
 ├── frontend/          # SPA (Fase 4)
 ├── nginx/             # Proxy inverso (Fase 5)
 ├── docs/              # Diagrama de arquitectura y documentación
@@ -102,7 +105,7 @@ docker compose up -d
 
 - [x] **Fase 1** · Base de datos (modelo relacional, scripts, roles, datos de prueba)
 - [x] **Fase 2** · ms-auth (OAuth 2.0 + JWT)
-- [ ] **Fase 3** · ms-academico (CRUD, filtros, IA)
+- [x] **Fase 3** · ms-academico (CRUD, filtros, IA)
 - [ ] **Fase 4** · Frontend
 - [ ] **Fase 5** · Nginx, Docker Compose completo y despliegue
 - [ ] **Fase 6** · Documentación de la API (Swagger / Postman)
