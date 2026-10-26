@@ -12,6 +12,8 @@ const materiaModel = require('../src/models/materia.model');
 const tareaModel = require('../src/models/tarea.model');
 const apunteModel = require('../src/models/apunte.model');
 const planModel = require('../src/models/plan.model');
+const cuestionarioModel = require('../src/models/cuestionario.model');
+const fechas = require('../src/utils/fechas');
 const limiteIa = require('../src/middlewares/limiteIa');
 
 let servidor;
@@ -117,10 +119,31 @@ test('materia ajena en una tarea (FK compuesta) se traduce a 404', async (t) => 
 });
 
 test('marcar tarea como completada envía solo el estado', async (t) => {
+  t.mock.method(tareaModel, 'obtener', async () => ({ id: MATERIA_ID, estado: 'pendiente' }));
   const actualizar = t.mock.method(tareaModel, 'actualizar', async () => ({ id: 'x', estado: 'completada' }));
   const r = await pedir(`/api/tareas/${MATERIA_ID}/estado`, { metodo: 'PATCH', cuerpo: { estado: 'completada', titulo: 'ignorado' } });
   assert.equal(r.status, 200);
   assert.deepEqual(actualizar.mock.calls[0].arguments[2], { estado: 'completada' });
+});
+
+test('una tarea completada no se puede reabrir ni editar (409)', async (t) => {
+  t.mock.method(tareaModel, 'obtener', async () => ({ id: MATERIA_ID, estado: 'completada' }));
+  const actualizar = t.mock.method(tareaModel, 'actualizar', async () => ({}));
+  const a = await pedir(`/api/tareas/${MATERIA_ID}/estado`, { metodo: 'PATCH', cuerpo: { estado: 'pendiente' } });
+  const b = await pedir(`/api/tareas/${MATERIA_ID}`, { metodo: 'PUT', cuerpo: { titulo: 'otro' } });
+  assert.equal(a.status, 409);
+  assert.equal(b.status, 409);
+  assert.equal((await a.json()).error.codigo, 'TAREA_COMPLETADA');
+  assert.equal(actualizar.mock.callCount(), 0);
+});
+
+test('el trigger de la base (P0001) también se traduce a 409', async (t) => {
+  t.mock.method(tareaModel, 'obtener', async () => ({ id: MATERIA_ID, estado: 'pendiente' }));
+  t.mock.method(tareaModel, 'actualizar', async () => {
+    throw Object.assign(new Error('TAREA_COMPLETADA'), { code: 'P0001' });
+  });
+  const r = await pedir(`/api/tareas/${MATERIA_ID}`, { metodo: 'PUT', cuerpo: { titulo: 'x' } });
+  assert.equal(r.status, 409);
 });
 
 // ---------- Asistente de IA (RF07, RF08) ----------
@@ -151,31 +174,80 @@ test('resumen: si Gemini rechaza la clave responde 502 IA_CLAVE_INVALIDA', async
 
 test('plan: sin tareas pendientes responde 422', async (t) => {
   t.mock.method(tareaModel, 'pendientesParaPlan', async () => []);
-  const r = await pedir('/api/ia/plan-estudio', { metodo: 'POST', cuerpo: {} });
+  const r = await pedir('/api/planes', { metodo: 'POST', cuerpo: {} });
   assert.equal(r.status, 422);
 });
 
-test('plan: incluye las tareas en el prompt y guarda el plan', async (t) => {
+test('plan: pide JSON a Gemini, valida las actividades y guarda el plan', async (t) => {
+  const TAREA = 'c0000000-0000-0000-0000-000000000001';
+  const hoy = fechas.hoy();
   t.mock.method(tareaModel, 'pendientesParaPlan', async () => [
-    { id: 't1', titulo: 'Árbol AVL', materia: 'Programación', prioridad: 'alta', estado: 'pendiente', vencida: false, fechaLimite: new Date('2026-11-02T05:59:00Z') },
+    { id: TAREA, titulo: 'Árbol AVL', materia: 'Programación', materiaId: MATERIA_ID, prioridad: 'alta', estado: 'pendiente', vencida: false, fechaLimite: new Date(Date.now() + 3 * 86400000) },
   ]);
   const crear = t.mock.method(planModel, 'crear', async (_u, datos) => ({ id: 'p1', ...datos }));
-  const llamadas = simularGemini(t, { candidates: [{ content: { parts: [{ text: '### Lunes\n- Estudiar AVL' }] } }] });
+  const respuestaIa = {
+    titulo: 'Semana de AVL',
+    resumen: 'Primero AVL.',
+    dias: [
+      { fecha: hoy, actividades: [
+        { inicio: '18:00', fin: '18:50', tipo: 'tarea', titulo: 'Rotaciones', tareaId: TAREA, materiaId: null },
+        { inicio: '18:50', fin: '19:00', tipo: 'descanso', titulo: 'Descanso' },
+        { inicio: '19:00', fin: '18:00', tipo: 'estudio', titulo: 'Hora inválida' },
+        { inicio: '19:00', fin: '19:40', tipo: 'inventado', titulo: 'Tipo desconocido', tareaId: 'id-inventado' },
+      ] },
+      { fecha: '1999-01-01', actividades: [{ inicio: '10:00', fin: '11:00', tipo: 'estudio', titulo: 'Fuera de rango' }] },
+    ],
+    consejos: ['Duerme bien'],
+  };
+  const llamadas = simularGemini(t, { candidates: [{ content: { parts: [{ text: JSON.stringify(respuestaIa) }] } }] });
 
-  const r = await pedir('/api/ia/plan-estudio', { metodo: 'POST', cuerpo: { dias: 5, horasPorDia: 2 } });
+  const r = await pedir('/api/planes', { metodo: 'POST', cuerpo: { dias: 5, horasPorDia: 2 } });
   assert.equal(r.status, 201);
-  assert.match(JSON.parse(llamadas[0].opciones.body).contents[0].parts[0].text, /Árbol AVL · Programación/);
+  const cuerpo = JSON.parse(llamadas[0].opciones.body);
+  assert.equal(cuerpo.generationConfig.responseMimeType, 'application/json');
+  assert.match(cuerpo.contents[0].parts[0].text, /Árbol AVL/);
+
   const datos = crear.mock.calls[0].arguments[1];
-  assert.deepEqual(datos.tareasIncluidas, ['t1']);
-  assert.equal(datos.dias, 5);
-  assert.equal(datos.modeloIa, 'gemini:modelo-prueba');
+  assert.equal(datos.titulo, 'Semana de AVL');
+  assert.deepEqual(datos.tareaIds, [TAREA]);
+  assert.equal(datos.actividades.length, 3);              // se descartan la hora inválida y la fecha fuera de rango
+  assert.equal(datos.actividades[0].materiaId, MATERIA_ID); // se completa con la materia de la tarea
+  assert.equal(datos.actividades[2].tipo, 'estudio');       // tipo desconocido -> estudio
+  assert.equal(datos.actividades[2].tareaId, null);         // id inventado -> null
 });
 
 test('límite de IA: la solicitud 11 en un minuto responde 429', async (t) => {
   t.mock.method(tareaModel, 'pendientesParaPlan', async () => []);
   let ultimo;
-  for (let i = 0; i < 11; i++) ultimo = await pedir('/api/ia/plan-estudio', { metodo: 'POST' });
+  for (let i = 0; i < 11; i++) ultimo = await pedir('/api/planes', { metodo: 'POST' });
   assert.equal(ultimo.status, 429);
+});
+
+test('cuestionario: nunca envía la respuesta correcta antes de responder', async (t) => {
+  t.mock.method(cuestionarioModel, 'obtener', async () => ({
+    id: 'q1', titulo: 'Q', preguntas: [{ pregunta: '¿2+2?', opciones: ['3', '4', '5', '6'], correcta: 1, explicacion: 'Suma', tema: 'Suma' }],
+  }));
+  t.mock.method(cuestionarioModel, 'historialIntentos', async () => []);
+  const r = await pedir(`/api/cuestionarios/${MATERIA_ID}`);
+  const { cuestionario } = await r.json();
+  assert.equal(cuestionario.preguntas[0].correcta, undefined);
+  assert.equal(cuestionario.preguntas[0].explicacion, undefined);
+});
+
+test('cuestionario: califica en el servidor y devuelve los temas débiles', async (t) => {
+  t.mock.method(cuestionarioModel, 'obtener', async () => ({
+    id: 'q1', preguntas: [
+      { pregunta: 'a', opciones: ['1', '2', '3', '4'], correcta: 1, explicacion: 'x', tema: 'Índices' },
+      { pregunta: 'b', opciones: ['1', '2', '3', '4'], correcta: 2, explicacion: 'y', tema: '3FN' },
+    ],
+  }));
+  const crear = t.mock.method(cuestionarioModel, 'crearIntento', async (_u, _id, i) => ({ ...i }));
+  const r = await pedir(`/api/cuestionarios/${MATERIA_ID}/intentos`, { metodo: 'POST', cuerpo: { respuestas: [1, 0] } });
+  assert.equal(r.status, 201);
+  const intento = crear.mock.calls[0].arguments[2];
+  assert.equal(intento.correctas, 1);
+  assert.equal(intento.puntaje, 50);
+  assert.deepEqual(intento.temasDebiles, ['3FN']);
 });
 
 // ---------- General ----------

@@ -59,8 +59,12 @@ module.exports = {
     { name: 'Materias', description: 'RF03 · HU02' },
     { name: 'Tareas', description: 'RF04, RF06 · HU03, HU04, HU05' },
     { name: 'Apuntes', description: 'RF05 · HU06' },
-    { name: 'Asistente IA', description: 'RF07, RF08 · HU07, HU08' },
-    { name: 'General', description: 'Panel y monitoreo (HU10)' },
+    { name: 'Exámenes', description: 'Exámenes y parciales' },
+    { name: 'Asistente IA', description: 'Resumen de apuntes (RF07, HU07)' },
+    { name: 'Plan de estudio', description: 'Planes por día con IA y reorganización (RF08, HU08)' },
+    { name: 'Cuestionarios', description: 'Preguntas de opción múltiple generadas con IA' },
+    { name: 'Tarjetas de memoria', description: 'Flashcards con repaso espaciado' },
+    { name: 'General', description: 'Panel, alertas, calendario y monitoreo (HU10)' },
   ],
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -82,7 +86,7 @@ module.exports = {
         type: 'object', required: ['nombre'],
         properties: {
           nombre: { type: 'string', maxLength: 120, example: 'Desarrollo Web I' },
-          docente: { type: 'string', example: 'Ing. Guillermo Pisqui' },
+          docente: { type: 'string', example: 'Ing. Andrea Morales' },
           descripcion: { type: 'string', example: 'Microservicios y Docker' },
           color: { type: 'string', example: '#2563EB' },
         },
@@ -139,15 +143,113 @@ module.exports = {
           creadoEn: { type: 'string', format: 'date-time' }, actualizadoEn: { type: 'string', format: 'date-time' },
         },
       },
+      ExamenEntrada: {
+        type: 'object', required: ['materiaId', 'titulo', 'fecha'],
+        properties: {
+          materiaId: { type: 'string', format: 'uuid' },
+          titulo: { type: 'string', example: 'Segundo parcial' },
+          fecha: { type: 'string', example: '2026-11-10T09:00:00-06:00' },
+          temas: { type: 'string', example: 'Normalización\nÍndices\nTransacciones' },
+          notas: { type: 'string' },
+        },
+      },
+      Examen: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' }, titulo: { type: 'string' }, fecha: { type: 'string', format: 'date-time' },
+          temas: { type: 'string', nullable: true }, notas: { type: 'string', nullable: true },
+          materiaId: { type: 'string', format: 'uuid' }, materia: { type: 'string' }, materiaColor: { type: 'string' },
+          cuestionarios: { type: 'integer' }, mejorPuntaje: { type: 'number', nullable: true }, planId: { type: 'string', nullable: true },
+        },
+      },
+      PlanEntrada: {
+        type: 'object',
+        properties: {
+          alcance: { type: 'string', enum: ['general', 'materia', 'apuntes', 'examen'], default: 'general' },
+          materiaId: { type: 'string', format: 'uuid' },
+          apunteIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 10 },
+          examenId: { type: 'string', format: 'uuid' },
+          dias: { type: 'integer', minimum: 1, maximum: 30, default: 7 },
+          horasPorDia: { type: 'integer', minimum: 1, maximum: 8, default: 3 },
+          horaInicio: { type: 'string', example: '18:00', default: '18:00' },
+          finesDeSemana: { type: 'boolean', default: true },
+        },
+      },
+      Actividad: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' }, fecha: { type: 'string', format: 'date' },
+          inicio: { type: 'string', example: '18:00' }, fin: { type: 'string', example: '18:50' },
+          tipo: { type: 'string', enum: ['estudio', 'tarea', 'repaso', 'practica', 'descanso'] },
+          titulo: { type: 'string' }, descripcion: { type: 'string', nullable: true },
+          completada: { type: 'boolean' }, tareaId: { type: 'string', nullable: true }, materiaId: { type: 'string', nullable: true },
+        },
+      },
+      Dia: {
+        type: 'object',
+        properties: { fecha: { type: 'string', format: 'date' }, actividades: { type: 'array', items: { $ref: '#/components/schemas/Actividad' } } },
+      },
+      Propuesta: {
+        type: 'object',
+        properties: {
+          planId: { type: 'string', format: 'uuid' }, resumen: { type: 'string' },
+          desde: { type: 'string', format: 'date' }, hasta: { type: 'string', format: 'date' },
+          pendientesAntes: { type: 'integer' }, dias: { type: 'array', items: { $ref: '#/components/schemas/Dia' } },
+        },
+      },
+      CuestionarioEntrada: {
+        type: 'object', required: ['fuente'],
+        properties: {
+          fuente: { type: 'string', enum: ['apuntes', 'materia', 'examen'] },
+          apunteIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+          materiaId: { type: 'string', format: 'uuid' },
+          examenId: { type: 'string', format: 'uuid' },
+          numPreguntas: { type: 'integer', minimum: 3, maximum: 20, default: 10 },
+          dificultad: { type: 'string', enum: ['facil', 'media', 'dificil'], default: 'media' },
+        },
+      },
+      Cuestionario: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' }, titulo: { type: 'string' }, dificultad: { type: 'string' },
+          totalPreguntas: { type: 'integer' }, mejorPuntaje: { type: 'number', nullable: true },
+          preguntas: { type: 'array', items: { type: 'object', properties: { pregunta: { type: 'string' }, opciones: { type: 'array', items: { type: 'string' } }, tema: { type: 'string' } } } },
+        },
+      },
+      Resultado: {
+        type: 'object',
+        properties: {
+          intento: { type: 'object', properties: { correctas: { type: 'integer' }, total: { type: 'integer' }, puntaje: { type: 'number' }, temasDebiles: { type: 'array', items: { type: 'string' } } } },
+          revision: { type: 'array', items: { type: 'object', properties: { pregunta: { type: 'string' }, elegida: { type: 'integer', nullable: true }, correcta: { type: 'integer' }, esCorrecta: { type: 'boolean' }, explicacion: { type: 'string' } } } },
+        },
+      },
+      Tarjeta: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' }, frente: { type: 'string' }, reverso: { type: 'string' },
+          proximoRepaso: { type: 'string', format: 'date' }, pendiente: { type: 'boolean' },
+          intervaloDias: { type: 'integer' }, repeticiones: { type: 'integer' },
+          proximosIntervalos: { type: 'object', properties: { olvidado: { type: 'integer' }, dificil: { type: 'integer' }, facil: { type: 'integer' } } },
+        },
+      },
+      Alerta: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }, tipo: { type: 'string', enum: ['tarea', 'examen', 'plan', 'tarjetas'] },
+          nivel: { type: 'string', enum: ['urgente', 'aviso', 'info'] },
+          titulo: { type: 'string' }, mensaje: { type: 'string' }, enlace: { type: 'string', example: '#/tareas?vencidas=true' },
+        },
+      },
       Plan: {
         type: 'object',
         properties: {
-          id: { type: 'string', format: 'uuid' },
+          id: { type: 'string', format: 'uuid' }, titulo: { type: 'string' },
+          alcance: { type: 'string', enum: ['general', 'materia', 'apuntes', 'examen'] },
           fechaInicio: { type: 'string', format: 'date' }, fechaFin: { type: 'string', format: 'date' },
-          contenido: { type: 'string', description: 'Plan en Markdown generado por la IA' },
-          tareasIncluidas: { type: 'array', items: { type: 'string', format: 'uuid' } },
+          resumen: { type: 'string' }, consejos: { type: 'array', items: { type: 'string' } },
+          totalActividades: { type: 'integer' }, completadas: { type: 'integer' }, atrasadas: { type: 'integer' },
+          actividades: { type: 'array', items: { $ref: '#/components/schemas/Actividad' } },
           modeloIa: { type: 'string', example: 'gemini:gemini-3.5-flash-lite' },
-          creadoEn: { type: 'string', format: 'date-time' },
         },
       },
     },
@@ -205,31 +307,154 @@ module.exports = {
         },
       },
     },
-    '/api/ia/plan-estudio': {
+    // ---------- Exámenes ----------
+    ...crud({ tag: 'Exámenes', ruta: '/api/examenes', singular: 'examen', plural: 'examenes', esquema: 'Examen', entrada: 'ExamenEntrada',
+      filtros: [
+        query('materiaId', { type: 'string', format: 'uuid' }, 'Filtrar por materia'),
+        query('periodo', { type: 'string', enum: ['proximos', 'pasados'] }, 'Próximos o pasados'),
+      ] }),
+
+    // ---------- Planes de estudio ----------
+    '/api/planes': {
+      get: {
+        tags: ['Plan de estudio'], summary: 'Historial de planes con su avance', security: seguro,
+        responses: { 200: { description: 'Lista', ...json({ type: 'object', properties: { planes: { type: 'array', items: ref('Plan') } } }) }, 401: ERRORES[401] },
+      },
       post: {
-        tags: ['Asistente IA'], summary: 'Generar plan de estudio con las tareas pendientes (RF08)', security: seguro,
-        requestBody: {
-          required: false,
-          ...json({ type: 'object', properties: { dias: { type: 'integer', minimum: 1, maximum: 30, default: 7 }, horasPorDia: { type: 'integer', minimum: 1, maximum: 12, default: 3 } } }),
-        },
+        tags: ['Plan de estudio'], summary: 'Generar un plan por días con IA (RF08)', security: seguro,
+        description: 'Alcance: `general` (todas las tareas), `materia` (requiere materiaId), `apuntes` (requiere apunteIds) o `examen` (requiere examenId; termina el día antes del examen).',
+        requestBody: { required: false, ...json(ref('PlanEntrada')) },
         responses: {
           201: { description: 'Plan generado y guardado', ...json({ type: 'object', properties: { plan: ref('Plan') } }) },
-          400: ERRORES[400], 401: ERRORES[401],
-          422: err('No hay tareas pendientes en ese rango'),
+          400: ERRORES[400], 401: ERRORES[401], 404: ERRORES[404],
+          422: err('No hay contenido que planificar (SIN_TAREAS_PENDIENTES, SIN_CONTENIDO, EXAMEN_PASADO)'),
           429: err('Límite de solicitudes a la IA'), 502: err('Error de la API de IA'), 503: err('IA no configurada'),
         },
       },
     },
-    '/api/ia/planes': {
-      get: {
-        tags: ['Asistente IA'], summary: 'Historial de planes (últimos 20)', security: seguro,
-        responses: { 200: { description: 'Lista', ...json({ type: 'object', properties: { planes: { type: 'array', items: ref('Plan') } } }) }, 401: ERRORES[401] },
+    '/api/planes/{id}': {
+      parameters: [idParam()],
+      get: { tags: ['Plan de estudio'], summary: 'Obtener un plan con sus actividades', security: seguro, responses: { 200: { description: 'OK', ...json({ type: 'object', properties: { plan: ref('Plan') } }) }, ...ERRORES } },
+      delete: { tags: ['Plan de estudio'], summary: 'Eliminar un plan', security: seguro, responses: { 204: { description: 'Eliminado' }, ...ERRORES } },
+    },
+    '/api/planes/{id}/actividades/{actividadId}': {
+      parameters: [idParam(), idParam('actividadId')],
+      patch: {
+        tags: ['Plan de estudio'], summary: 'Marcar una actividad como hecha o pendiente', security: seguro,
+        requestBody: { required: true, ...json({ type: 'object', required: ['completada'], properties: { completada: { type: 'boolean' } } }) },
+        responses: { 200: { description: 'Actividad actualizada', ...json({ type: 'object', properties: { actividad: ref('Actividad') } }) }, ...ERRORES },
       },
     },
-    '/api/ia/planes/{id}': {
+    '/api/planes/{id}/reorganizar': {
       parameters: [idParam()],
-      get: { tags: ['Asistente IA'], summary: 'Obtener un plan', security: seguro, responses: { 200: { description: 'OK', ...json({ type: 'object', properties: { plan: ref('Plan') } }) }, ...ERRORES } },
-      delete: { tags: ['Asistente IA'], summary: 'Eliminar un plan', security: seguro, responses: { 204: { description: 'Eliminado' }, ...ERRORES } },
+      post: {
+        tags: ['Plan de estudio'], summary: 'Proponer una reorganización de lo no completado (no guarda nada)', security: seguro,
+        responses: {
+          200: { description: 'Propuesta para revisar', ...json({ type: 'object', properties: { propuesta: ref('Propuesta') } }) },
+          ...ERRORES, 422: err('No hay actividades pendientes (NADA_QUE_REORGANIZAR)'),
+        },
+      },
+    },
+    '/api/planes/{id}/aplicar': {
+      parameters: [idParam()],
+      post: {
+        tags: ['Plan de estudio'], summary: 'Aplicar la propuesta aprobada por el estudiante', security: seguro,
+        description: 'Reemplaza las actividades no completadas. Las completadas se conservan.',
+        requestBody: { required: true, ...json({ type: 'object', required: ['dias'], properties: { dias: { type: 'array', items: ref('Dia') } } }) },
+        responses: { 200: { description: 'Plan actualizado', ...json({ type: 'object', properties: { plan: ref('Plan') } }) }, ...ERRORES },
+      },
+    },
+
+    // ---------- Cuestionarios ----------
+    '/api/cuestionarios': {
+      get: {
+        tags: ['Cuestionarios'], summary: 'Listar cuestionarios con su mejor puntaje', security: seguro,
+        parameters: [query('materiaId', { type: 'string', format: 'uuid' }), query('examenId', { type: 'string', format: 'uuid' })],
+        responses: { 200: { description: 'Lista' }, 401: ERRORES[401] },
+      },
+      post: {
+        tags: ['Cuestionarios'], summary: 'Generar un cuestionario de opción múltiple con IA', security: seguro,
+        description: 'La respuesta NO incluye la opción correcta ni la explicación; se revelan al responder.',
+        requestBody: { required: true, ...json(ref('CuestionarioEntrada')) },
+        responses: {
+          201: { description: 'Cuestionario creado', ...json({ type: 'object', properties: { cuestionario: ref('Cuestionario') } }) },
+          ...ERRORES, 422: err('No hay apuntes (SIN_APUNTES)'), 429: err('Límite de IA'), 502: err('Error de la API de IA'),
+        },
+      },
+    },
+    '/api/cuestionarios/{id}': {
+      parameters: [idParam()],
+      get: { tags: ['Cuestionarios'], summary: 'Obtener preguntas (sin respuestas) e historial de intentos', security: seguro, responses: { 200: { description: 'OK', ...json({ type: 'object', properties: { cuestionario: ref('Cuestionario') } }) }, ...ERRORES } },
+      delete: { tags: ['Cuestionarios'], summary: 'Eliminar cuestionario', security: seguro, responses: { 204: { description: 'Eliminado' }, ...ERRORES } },
+    },
+    '/api/cuestionarios/{id}/intentos': {
+      parameters: [idParam()],
+      post: {
+        tags: ['Cuestionarios'], summary: 'Responder y calificar', security: seguro,
+        requestBody: { required: true, ...json({ type: 'object', required: ['respuestas'], properties: { respuestas: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 3, nullable: true }, example: [1, 0, 3, 2, 1] } } }) },
+        responses: { 201: { description: 'Calificación y revisión de cada pregunta', ...json(ref('Resultado')) }, ...ERRORES },
+      },
+    },
+    '/api/cuestionarios/{id}/revision': {
+      parameters: [idParam()],
+      get: { tags: ['Cuestionarios'], summary: 'Revisión del último intento', security: seguro, responses: { 200: { description: 'OK', ...json(ref('Resultado')) }, ...ERRORES } },
+    },
+
+    // ---------- Tarjetas de memoria ----------
+    '/api/flashcards': {
+      get: {
+        tags: ['Tarjetas de memoria'], summary: 'Listar tarjetas', security: seguro,
+        parameters: [
+          query('materiaId', { type: 'string', format: 'uuid' }),
+          query('apunteId', { type: 'string', format: 'uuid' }),
+          query('pendientes', { type: 'string', enum: ['true', 'false'] }, 'Solo las que toca repasar hoy'),
+        ],
+        responses: { 200: { description: 'Lista', ...json({ type: 'object', properties: { tarjetas: { type: 'array', items: ref('Tarjeta') } } }) }, 401: ERRORES[401] },
+      },
+      post: {
+        tags: ['Tarjetas de memoria'], summary: 'Crear una tarjeta a mano', security: seguro,
+        requestBody: { required: true, ...json({ type: 'object', required: ['materiaId', 'frente', 'reverso'], properties: { materiaId: { type: 'string', format: 'uuid' }, frente: { type: 'string' }, reverso: { type: 'string' } } }) },
+        responses: { 201: { description: 'Creada', ...json({ type: 'object', properties: { tarjeta: ref('Tarjeta') } }) }, ...ERRORES },
+      },
+    },
+    '/api/flashcards/generar': {
+      post: {
+        tags: ['Tarjetas de memoria'], summary: 'Generar tarjetas con IA desde un apunte', security: seguro,
+        requestBody: { required: true, ...json({ type: 'object', required: ['apunteId'], properties: { apunteId: { type: 'string', format: 'uuid' }, cantidad: { type: 'integer', minimum: 3, maximum: 25, default: 10 } } }) },
+        responses: { 201: { description: 'Tarjetas creadas' }, ...ERRORES, 429: err('Límite de IA'), 502: err('Error de la API de IA') },
+      },
+    },
+    '/api/flashcards/resumen': {
+      get: { tags: ['Tarjetas de memoria'], summary: 'Totales por materia: tarjetas, pendientes hoy y dominadas', security: seguro, responses: { 200: { description: 'OK' }, 401: ERRORES[401] } },
+    },
+    '/api/flashcards/{id}': {
+      parameters: [idParam()],
+      put: { tags: ['Tarjetas de memoria'], summary: 'Editar tarjeta', security: seguro, responses: { 200: { description: 'OK' }, ...ERRORES } },
+      delete: { tags: ['Tarjetas de memoria'], summary: 'Eliminar tarjeta', security: seguro, responses: { 204: { description: 'Eliminada' }, ...ERRORES } },
+    },
+    '/api/flashcards/{id}/repaso': {
+      parameters: [idParam()],
+      post: {
+        tags: ['Tarjetas de memoria'], summary: 'Registrar un repaso (repaso espaciado SM-2)', security: seguro,
+        description: '`olvidado` → vuelve hoy · `dificil` → intervalo corto · `facil` → el intervalo crece (2, 5, ×facilidad días).',
+        requestBody: { required: true, ...json({ type: 'object', required: ['calificacion'], properties: { calificacion: { type: 'string', enum: ['olvidado', 'dificil', 'facil'] } } }) },
+        responses: { 200: { description: 'Tarjeta con su próximo repaso', ...json({ type: 'object', properties: { tarjeta: ref('Tarjeta') } }) }, ...ERRORES },
+      },
+    },
+
+    // ---------- Agenda ----------
+    '/api/alertas': {
+      get: { tags: ['General'], summary: 'Alertas y recordatorios (vencimientos, exámenes, plan, tarjetas)', security: seguro, responses: { 200: { description: 'Lista ordenada por urgencia', ...json({ type: 'object', properties: { alertas: { type: 'array', items: ref('Alerta') } } }) }, 401: ERRORES[401] } },
+    },
+    '/api/calendario': {
+      get: {
+        tags: ['General'], summary: 'Eventos del calendario: tareas, exámenes y sesiones de estudio', security: seguro,
+        parameters: [
+          { name: 'desde', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
+          { name: 'hasta', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
+        ],
+        responses: { 200: { description: 'Eventos ordenados por fecha' }, 400: ERRORES[400], 401: ERRORES[401] },
+      },
     },
   },
 };
