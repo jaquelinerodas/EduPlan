@@ -1,0 +1,200 @@
+
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('../fuentes/bricolage-grotesque.woff2') format('woff2-variations');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src: url('../fuentes/atkinson-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src: url('../fuentes/atkinson-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src: url('../fuentes/atkinson-700-normal.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --papel: #F6F8FC;
+  --cuadricula: #E4EAF4;
+  --superficie: #FFFFFF;
+  --superficie-2: #EEF2F9;
+  --borde: #D6DDEA;
+  --borde-fuerte: #B9C3D6;
+
+  --grafito: #252A33;
+  --grafito-suave: #586072;
+  --grafito-tenue: #8A92A3;
+
+  --tinta: #2340A0;
+  --tinta-hover: #1A3184;
+  --tinta-suave: #E3E9FB;
+  --sobre-tinta: #FFFFFF;
+
+  --rojo: #C22F3B;
+  --rojo-suave: #FBE7E9;
+  --verde: #23784C;
+  --verde-suave: #E2F3EA;
+  --ambar: #9A6400;
+  --ambar-suave: #FFF2D6;
+  --marcatextos: rgba(255, 221, 64, 0.75);
+
+  --fuente-titulos: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --fuente-texto: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
+  --t-xs: 0.8125rem;
+  --t-sm: 0.875rem;
+  --t-base: 1rem;
+  --t-md: 1.25rem;
+  --t-lg: 1.5625rem;
+  --t-xl: 1.953rem;
+  --t-2xl: 2.441rem;
+
+  /* Espaciado (múltiplos de 4px) */
+  --e-1: 0.25rem;
+  --e-2: 0.5rem;
+  --e-3: 0.75rem;
+  --e-4: 1rem;
+  --e-5: 1.5rem;
+  --e-6: 2rem;
+  --e-7: 3rem;
+
+  /* Radios según jerarquía: hoja > control > etiqueta */
+  --r-hoja: 14px;
+  --r-control: 8px;
+  --r-pastilla: 999px;
+
+  --sombra-hoja: 0 1px 0 rgba(37, 42, 51, 0.04), 0 8px 24px -12px rgba(35, 64, 160, 0.18);
+  --sombra-flotante: 0 18px 48px -12px rgba(20, 30, 70, 0.35);
+  --cuadro: 24px;
+  --ancho-lateral: 248px;
+
+  color-scheme: light;
+}
+
+/* Modo oscuro: cuaderno de noche */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) {
+    --papel: #10162A;
+    --cuadricula: #182141;
+    --superficie: #161E36;
+    --superficie-2: #1D2744;
+    --borde: #2A3558;
+    --borde-fuerte: #3B4874;
+    --grafito: #E8ECF5;
+    --grafito-suave: #A7B0C5;
+    --grafito-tenue: #7480A0;
+    --tinta: #8EA7FF;
+    --tinta-hover: #B0C2FF;
+    --tinta-suave: #22305C;
+    --sobre-tinta: #0E1430;
+    --rojo: #FF7A85;
+    --rojo-suave: #3A1C27;
+    --verde: #5FD39A;
+    --verde-suave: #16352A;
+    --ambar: #F0B95A;
+    --ambar-suave: #3A2E14;
+    --marcatextos: rgba(232, 196, 40, 0.42);
+    --sombra-hoja: 0 1px 0 rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
+    color-scheme: dark;
+  }
+}
+
+/* ---------- Reset mínimo ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--fuente-texto);
+  font-size: var(--t-base);
+  line-height: 1.55;
+  color: var(--grafito);
+  background-color: var(--papel);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-family: var(--fuente-titulos);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--grafito);
+}
+h1 { font-size: var(--t-xl); }
+h2 { font-size: var(--t-lg); }
+h3 { font-size: var(--t-md); }
+h4 { font-size: var(--t-base); }
+
+p { margin: 0; }
+
+a {
+  color: var(--tinta);
+  text-underline-offset: 3px;
+}
+
+img, svg { display: block; max-width: 100%; }
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--tinta);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--marcatextos);
+  color: var(--grafito);
+}
+
+.solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
