@@ -53,11 +53,30 @@ Esquema de BD: `auth` (tabla `usuarios`). Detalle completo en **[ms-auth/README.
 
 Todas las rutas (excepto `health` y `docs`) exigen `Authorization: Bearer <JWT>` y solo devuelven datos del usuario del token (RF09). Esquema de BD: `academico`. Detalle completo en **[ms-academico/README.md](ms-academico/README.md)**.
 
-### nginx · Proxy inverso (puertos 80/443)
-Punto único de entrada (RF10): sirve el frontend, enruta `/auth/` → ms-auth y `/api/` → ms-academico, y termina TLS.
+### nginx · Proxy inverso (puerto 80)
+Punto único de entrada (RF10). Configuración en [`nginx/default.conf`](nginx/default.conf):
 
-### frontend · SPA (HTML, CSS, JavaScript)
-Interfaz responsiva con inicio de sesión con Google, guarda el JWT en el cliente y lo elimina al cerrar sesión (RF11).
+| Ruta | Destino |
+|---|---|
+| `/` | Archivos del frontend |
+| `/auth/` | `ms-auth:3001` |
+| `/api/` | `ms-academico:3002` (timeout de 60 s por las respuestas de la IA) |
+
+Agrega encabezados de seguridad (Content-Security-Policy, X-Frame-Options, nosniff), compresión gzip y caché para las fuentes.
+
+### frontend · SPA (HTML, CSS y JavaScript sin frameworks)
+Interfaz responsiva (computadora y teléfono, con modo oscuro automático). Detalle en **[frontend/README.md](frontend/README.md)**.
+
+| Vista | Qué hace | Req. |
+|---|---|---|
+| Inicio de sesión | Botón "Continuar con Google" | RF01, HU01 |
+| Panel | Resumen del día, entregas atrasadas, agenda de la semana, avance por materia y último plan | HU05 |
+| Tareas | Lista con filtros por materia, estado, prioridad, fechas y vencidas; crear, editar, eliminar y completar | RF04, RF06, HU03–HU05 |
+| Materias | Crear, editar y eliminar materias con color y avance | RF03, HU02 |
+| Apuntes | Editor por materia con búsqueda y botón "Resumir con IA" | RF05, RF07, HU06, HU07 |
+| Plan de estudio | Genera el plan con IA e historial de planes | RF08, HU08 |
+| Estado del sistema | Salud de los microservicios (solo administradores) | HU10 |
+| Cerrar sesión | Elimina el JWT del navegador | RF11, HU09 |
 
 ## Base de datos
 
@@ -78,8 +97,8 @@ eduplan/
 ├── database/          # Modelo relacional, scripts de inicialización y datos de prueba
 ├── ms-auth/           # Microservicio 1: OAuth 2.0 + JWT
 ├── ms-academico/      # Microservicio 2: materias, tareas, apuntes e IA
-├── frontend/          # SPA (Fase 4)
-├── nginx/             # Proxy inverso (Fase 5)
+├── frontend/          # SPA: HTML, CSS y JavaScript
+├── nginx/             # Configuración del proxy inverso
 ├── docs/              # Diagrama de arquitectura y documentación
 ├── docker-compose.yml
 ├── .env.example
@@ -97,17 +116,26 @@ Requisito: Docker Desktop (o Docker Engine + Compose).
 ```bash
 git clone https://github.com/<tu-usuario>/eduplan.git
 cd eduplan
-cp .env.example .env        # y cambiar las contraseñas
-docker compose up -d
+cp .env.example .env        # y completar contraseñas, claves de Google, JWT y IA
+docker compose up -d --build
 ```
+
+Abrir **http://localhost** e iniciar sesión con Google.
+
+| Dirección | Para qué |
+|---|---|
+| http://localhost | Aplicación |
+| http://localhost/api/docs | Documentación Swagger de ms-academico |
+| http://localhost/auth/docs | Documentación Swagger de ms-auth |
+| http://localhost/api/health · /auth/health | Estado de cada microservicio |
 
 ## Avance por fases
 
 - [x] **Fase 1** · Base de datos (modelo relacional, scripts, roles, datos de prueba)
 - [x] **Fase 2** · ms-auth (OAuth 2.0 + JWT)
 - [x] **Fase 3** · ms-academico (CRUD, filtros, IA)
-- [ ] **Fase 4** · Frontend
-- [ ] **Fase 5** · Nginx, Docker Compose completo y despliegue
+- [x] **Fase 4** · Frontend y proxy inverso Nginx
+- [ ] **Fase 5** · HTTPS, cierre de puertos internos y despliegue
 - [ ] **Fase 6** · Documentación de la API (Swagger / Postman)
 
 ## Convención de commits
