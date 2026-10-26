@@ -64,6 +64,21 @@ function validarCampo(nombre, valor, regla) {
       if (regla.max !== undefined && n > regla.max) return { error: `${nombre} debe ser menor o igual a ${regla.max}` };
       return { valor: n };
     }
+    case 'hora': {
+      const m = typeof valor === 'string' && valor.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+      return m ? { valor: `${m[1].padStart(2, '0')}:${m[2]}` } : { error: `${nombre} debe tener formato HH:MM` };
+    }
+    case 'booleano':
+      if (typeof valor === 'boolean') return { valor };
+      if (valor === 'true' || valor === 'false') return { valor: valor === 'true' };
+      return { error: `${nombre} debe ser verdadero o falso` };
+    case 'listaUuid': {
+      if (!Array.isArray(valor)) return { error: `${nombre} debe ser una lista` };
+      if (regla.min && valor.length < regla.min) return { error: `${nombre} debe tener al menos ${regla.min} elemento(s)` };
+      if (regla.max && valor.length > regla.max) return { error: `${nombre} admite máximo ${regla.max} elementos` };
+      if (!valor.every((v) => typeof v === 'string' && REGEX.uuid.test(v))) return { error: `${nombre} contiene ids inválidos` };
+      return { valor: [...new Set(valor.map((v) => v.toLowerCase()))] };
+    }
     default:
       throw new Error(`Tipo de regla desconocido: ${regla.tipo}`);
   }

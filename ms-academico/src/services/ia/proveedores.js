@@ -1,6 +1,7 @@
 /**
- * Adaptadores para la API de IA. Todos exponen la misma función:
- *   generarTexto({ sistema, mensaje }) -> Promise<string>
+ * Adaptadores para la API de IA. Todos exponen las mismas funciones:
+ *   generarTexto({ sistema, mensaje })              -> texto (Markdown)
+ *   generarJson({ sistema, mensaje, simulado })     -> objeto JSON
  * El proveedor se elige con AI_PROVIDER (gemini | claude | openai | simulado).
  */
 const { config } = require('../../config/env');
@@ -12,7 +13,7 @@ async function llamarApi(url, opciones) {
     respuesta = await fetch(url, { ...opciones, signal: AbortSignal.timeout(config.ia.timeoutMs) });
   } catch (err) {
     if (err.name === 'TimeoutError') {
-      throw new AppError('La IA tardó demasiado en responder', 504, 'IA_TIMEOUT');
+      throw new AppError('La IA tardó demasiado en responder. Intenta con menos contenido.', 504, 'IA_TIMEOUT');
     }
     throw new AppError('No se pudo conectar con la API de IA', 502, 'IA_NO_DISPONIBLE');
   }
@@ -36,7 +37,7 @@ async function llamarApi(url, opciones) {
 
 const proveedores = {
   // https://ai.google.dev/api/generate-content
-  async gemini({ sistema, mensaje }) {
+  async gemini({ sistema, mensaje, json }) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.ia.modelo}:generateContent`;
     const datos = await llamarApi(url, {
       method: 'POST',
@@ -44,6 +45,7 @@ const proveedores = {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: sistema }] },
         contents: [{ role: 'user', parts: [{ text: mensaje }] }],
+        ...(json ? { generationConfig: { responseMimeType: 'application/json' } } : {}),
       }),
     });
     const partes = datos.candidates?.[0]?.content?.parts || [];
@@ -51,7 +53,7 @@ const proveedores = {
   },
 
   // https://docs.claude.com/en/api/messages
-  async claude({ sistema, mensaje }) {
+  async claude({ sistema, mensaje, json }) {
     const datos = await llamarApi('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -61,7 +63,7 @@ const proveedores = {
       },
       body: JSON.stringify({
         model: config.ia.modelo,
-        max_tokens: 2048,
+        max_tokens: json ? 8192 : 2048,
         system: sistema,
         messages: [{ role: 'user', content: mensaje }],
       }),
@@ -70,7 +72,7 @@ const proveedores = {
   },
 
   // https://platform.openai.com/docs/api-reference/chat
-  async openai({ sistema, mensaje }) {
+  async openai({ sistema, mensaje, json }) {
     const datos = await llamarApi('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.ia.apiKey}` },
@@ -80,6 +82,7 @@ const proveedores = {
           { role: 'system', content: sistema },
           { role: 'user', content: mensaje },
         ],
+        ...(json ? { response_format: { type: 'json_object' } } : {}),
       }),
     });
     return datos.choices?.[0]?.message?.content || '';
@@ -91,18 +94,56 @@ const proveedores = {
   },
 };
 
-async function generarTexto(peticion) {
+function verificarConfiguracion() {
   const { proveedor, apiKey } = config.ia;
   if (proveedor !== 'simulado' && !apiKey) {
     throw new AppError('El asistente de IA no está configurado (falta AI_API_KEY)', 503, 'IA_NO_CONFIGURADA');
   }
-  const texto = (await proveedores[proveedor](peticion)).trim();
+}
+
+async function generarTexto(peticion) {
+  verificarConfiguracion();
+  const texto = (await proveedores[config.ia.proveedor](peticion)).trim();
   if (!texto) {
     throw new AppError('La IA no devolvió contenido, intenta de nuevo', 502, 'IA_RESPUESTA_VACIA');
   }
   return texto;
 }
 
+/** Extrae el objeto JSON aunque el modelo lo envuelva en ```json ... ``` o agregue texto. */
+function interpretarJson(texto) {
+  const limpio = String(texto || '').replace(/```(?:json)?/gi, '').trim();
+  const inicio = limpio.indexOf('{');
+  const fin = limpio.lastIndexOf('}');
+  if (inicio === -1 || fin <= inicio) return null;
+  try {
+    return JSON.parse(limpio.slice(inicio, fin + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pide al modelo una respuesta en JSON.
+ * "simulado" es una función que genera datos de ejemplo cuando AI_PROVIDER=simulado.
+ */
+async function generarJson({ sistema, mensaje, simulado }) {
+  verificarConfiguracion();
+  if (config.ia.proveedor === 'simulado') {
+    if (!simulado) throw new AppError('Función no disponible en modo simulado', 501, 'IA_SIMULADO');
+    return simulado();
+  }
+
+  const instrucciones = `${sistema}\n\nResponde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques de código.`;
+  for (let intento = 1; intento <= 2; intento++) {
+    const texto = await proveedores[config.ia.proveedor]({ sistema: instrucciones, mensaje, json: true });
+    const datos = interpretarJson(texto);
+    if (datos) return datos;
+    console.error(`[ms-academico] La IA no devolvió JSON válido (intento ${intento}):`, String(texto).slice(0, 300));
+  }
+  throw new AppError('La IA devolvió una respuesta con formato inválido, intenta de nuevo', 502, 'IA_RESPUESTA_INVALIDA');
+}
+
 const nombreModelo = () => `${config.ia.proveedor}:${config.ia.modelo}`;
 
-module.exports = { generarTexto, nombreModelo, proveedores };
+module.exports = { generarTexto, generarJson, interpretarJson, nombreModelo, proveedores };

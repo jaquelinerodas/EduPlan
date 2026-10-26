@@ -9,6 +9,11 @@ function traducirErrorPg(err) {
   if (!err || typeof err.code !== 'string') return null;
 
   switch (err.code) {
+    case 'P0001':
+      if (err.message === 'TAREA_COMPLETADA') {
+        return new AppError('La tarea ya está completada y no se puede modificar', 409, 'TAREA_COMPLETADA');
+      }
+      return null;
     case '23505':
       if (err.constraint === 'uq_materias_usuario_nombre') {
         return new AppError('Ya tienes una materia con ese nombre', 409, 'MATERIA_DUPLICADA');
