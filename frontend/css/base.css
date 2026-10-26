@@ -1,4 +1,8 @@
-
+/* =============================================================================
+   EduPlan · Tokens de diseño y estilos base
+   Concepto: el cuaderno del estudiante (papel cuadriculado, tinta azul,
+   rojo de corrección y marcatextos para lo urgente).
+   ============================================================================= */
 
 @font-face {
   font-family: 'Bricolage Grotesque';
@@ -30,6 +34,7 @@
 }
 
 :root {
+  /* Papel y tinta */
   --papel: #F6F8FC;
   --cuadricula: #E4EAF4;
   --superficie: #FFFFFF;
@@ -41,6 +46,7 @@
   --grafito-suave: #586072;
   --grafito-tenue: #8A92A3;
 
+  --marca: #4A63E7;
   --tinta: #2340A0;
   --tinta-hover: #1A3184;
   --tinta-suave: #E3E9FB;
@@ -54,6 +60,14 @@
   --ambar-suave: #FFF2D6;
   --marcatextos: rgba(255, 221, 64, 0.75);
 
+  /* Tipos de actividad del plan y del calendario */
+  --c-estudio: #2563EB;
+  --c-tarea: #7C3AED;
+  --c-repaso: #0D9488;
+  --c-practica: #D97706;
+  --c-examen: #C22F3B;
+
+  /* Tipografía: escala 1.25 sobre 16px */
   --fuente-titulos: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
   --fuente-texto: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
   --t-xs: 0.8125rem;
@@ -98,6 +112,7 @@
     --grafito: #E8ECF5;
     --grafito-suave: #A7B0C5;
     --grafito-tenue: #7480A0;
+    --marca: #8FA3F7;
     --tinta: #8EA7FF;
     --tinta-hover: #B0C2FF;
     --tinta-suave: #22305C;
@@ -109,6 +124,11 @@
     --ambar: #F0B95A;
     --ambar-suave: #3A2E14;
     --marcatextos: rgba(232, 196, 40, 0.42);
+    --c-estudio: #7FA2FF;
+    --c-tarea: #B79BFF;
+    --c-repaso: #4FD1C1;
+    --c-practica: #F5B453;
+    --c-examen: #FF7A85;
     --sombra-hoja: 0 1px 0 rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
     color-scheme: dark;
   }

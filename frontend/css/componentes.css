@@ -1,5 +1,8 @@
-/* Componentes reutilizables */
+/* =============================================================================
+   EduPlan · Componentes reutilizables
+   ============================================================================= */
 
+/* ---------- Botones ---------- */
 .boton {
   display: inline-flex;
   align-items: center;
@@ -33,7 +36,9 @@
 .boton--fantasma { background: transparent; color: var(--grafito-suave); }
 .boton--fantasma:hover:not(:disabled) { background: var(--superficie-2); color: var(--grafito); }
 
-.boton--peligro { background: var(--rojo); color: #fff; }
+.boton--peligro { background: var(--rojo); color: var(--sobre-tinta); }
+.boton--exito { background: var(--verde); color: var(--sobre-tinta); }
+.boton--exito:hover:not(:disabled) { filter: brightness(0.92); }
 .boton--peligro:hover:not(:disabled) { filter: brightness(0.92); }
 
 .boton--ia {
