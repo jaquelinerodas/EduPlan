@@ -5,7 +5,7 @@ Motor: **PostgreSQL 16** · Una sola instancia compartida por los dos microservi
 | Esquema | Dueño | Tablas |
 |---|---|---|
 | `auth` | ms-auth | `usuarios` |
-| `academico` | ms-academico | `materias`, `tareas`, `apuntes`, `planes_estudio` (+ vista `v_resumen_materias`) |
+| `academico` | ms-academico | `materias`, `tareas`, `apuntes`, `examenes`, `planes_estudio`, `plan_actividades`, `cuestionarios`, `cuestionario_intentos`, `flashcards` (+ vista `v_resumen_materias`) |
 
 ## Estructura de la carpeta
 
@@ -13,7 +13,8 @@ Motor: **PostgreSQL 16** · Una sola instancia compartida por los dos microservi
 database/
 ├── init/                         # Se ejecuta automáticamente al crear el contenedor
 │   ├── 01_schema.sql             # Esquemas, tipos, tablas, restricciones, índices, triggers y vista
-│   └── 02_roles.sh               # Usuarios de BD por microservicio (contraseñas desde .env)
+│   ├── 02_roles.sh               # Usuarios de BD por microservicio (contraseñas desde .env)
+│   └── 03_mejoras.sql            # Versión 2: contraseñas, exámenes, planes por día, cuestionarios, tarjetas
 ├── seeds/
 │   └── seed_dev.sql              # Datos de prueba (solo desarrollo)
 ├── queries/
@@ -31,10 +32,20 @@ erDiagram
     USUARIOS ||--o{ PLANES_ESTUDIO : "recibe"
     MATERIAS ||--o{ TAREAS : "agrupa"
     MATERIAS ||--o{ APUNTES : "agrupa"
+    MATERIAS ||--o{ EXAMENES : "tiene"
+    MATERIAS ||--o{ FLASHCARDS : "agrupa"
+    APUNTES |o--o{ FLASHCARDS : "origina"
+    EXAMENES |o--o{ PLANES_ESTUDIO : "se prepara con"
+    PLANES_ESTUDIO ||--o{ PLAN_ACTIVIDADES : "contiene"
+    TAREAS |o--o{ PLAN_ACTIVIDADES : "se trabaja en"
+    USUARIOS ||--o{ CUESTIONARIOS : "genera"
+    EXAMENES |o--o{ CUESTIONARIOS : "se practica con"
+    CUESTIONARIOS ||--o{ CUESTIONARIO_INTENTOS : "registra"
 
     USUARIOS {
         uuid id PK
-        varchar google_id UK "id de Google"
+        varchar google_id UK "id de Google (nulo si usa contraseña)"
+        text password_hash "scrypt (nulo si usa Google)"
         citext email UK
         varchar nombre
         text foto_url
@@ -81,12 +92,76 @@ erDiagram
     PLANES_ESTUDIO {
         uuid id PK
         uuid usuario_id FK
+        varchar titulo
+        varchar alcance "general | materia | apuntes | examen"
+        uuid materia_id FK
+        uuid examen_id FK
         date fecha_inicio
         date fecha_fin
-        text contenido "generado por IA"
+        text contenido "resumen escrito por la IA"
+        text_array consejos
+        smallint horas_por_dia
         uuid_array tareas_incluidas
+        uuid_array apuntes_incluidos
         varchar modelo_ia
+        timestamptz reorganizado_en
         timestamptz creado_en
+    }
+    EXAMENES {
+        uuid id PK
+        uuid usuario_id FK
+        uuid materia_id FK
+        varchar titulo
+        timestamptz fecha
+        text temas
+        text notas
+        timestamptz creado_en
+    }
+    PLAN_ACTIVIDADES {
+        uuid id PK
+        uuid plan_id FK
+        uuid usuario_id FK
+        date fecha
+        time hora_inicio
+        time hora_fin
+        enum tipo "estudio | tarea | repaso | practica | descanso"
+        varchar titulo
+        text descripcion
+        uuid materia_id FK
+        uuid tarea_id FK
+        boolean completada
+    }
+    CUESTIONARIOS {
+        uuid id PK
+        uuid usuario_id FK
+        uuid materia_id FK
+        uuid examen_id FK
+        varchar titulo
+        varchar dificultad
+        jsonb preguntas "con la respuesta correcta"
+        uuid_array apuntes_incluidos
+    }
+    CUESTIONARIO_INTENTOS {
+        uuid id PK
+        uuid cuestionario_id FK
+        uuid usuario_id FK
+        jsonb respuestas
+        smallint correctas
+        smallint total
+        numeric puntaje
+        text_array temas_debiles
+    }
+    FLASHCARDS {
+        uuid id PK
+        uuid usuario_id FK
+        uuid materia_id FK
+        uuid apunte_id FK
+        text frente
+        text reverso
+        smallint repeticiones
+        smallint intervalo_dias
+        numeric facilidad
+        date proximo_repaso
     }
 ```
 
@@ -103,6 +178,19 @@ academico.planes_estudio (#id, usuario_id → usuarios.id, fecha_inicio, fecha_f
                       tareas_incluidas, modelo_ia, creado_en)
 ```
 
+Tablas de la versión 2 (`03_mejoras.sql`):
+
+```
+academico.examenes              (#id, (materia_id, usuario_id) → materias, titulo, fecha, temas, notas, ...)
+academico.plan_actividades      (#id, (plan_id, usuario_id) → planes_estudio, fecha, hora_inicio, hora_fin, tipo, titulo,
+                                 descripcion, (materia_id, usuario_id) → materias, (tarea_id, usuario_id) → tareas, completada)
+academico.cuestionarios         (#id, usuario_id → usuarios, (materia_id, usuario_id) → materias,
+                                 (examen_id, usuario_id) → examenes, titulo, dificultad, preguntas, ...)
+academico.cuestionario_intentos (#id, (cuestionario_id, usuario_id) → cuestionarios, respuestas, correctas, total, puntaje, temas_debiles)
+academico.flashcards            (#id, (materia_id, usuario_id) → materias, (apunte_id, usuario_id) → apuntes, frente, reverso,
+                                 repeticiones, intervalo_dias, facilidad, proximo_repaso, ...)
+```
+
 El modelo está en **3FN**: cada atributo depende solo de la llave primaria de su tabla, y no hay datos repetidos entre tablas (el nombre de la materia vive solo en `materias`).
 
 ## Diccionario de datos
@@ -111,7 +199,8 @@ El modelo está en **3FN**: cada atributo depende solo de la llave primaria de s
 | Columna | Tipo | Nulo | Default | Descripción |
 |---|---|---|---|---|
 | id | UUID | No | `gen_random_uuid()` | PK. Viaja en el JWT como `sub` |
-| google_id | VARCHAR(64) | No | | Id único que entrega Google. **UNIQUE** |
+| google_id | VARCHAR(64) | Sí | | Id único que entrega Google. **UNIQUE**. Nulo si la cuenta solo usa contraseña |
+| password_hash | TEXT | Sí | | Hash scrypt con sal (`scrypt$N$r$p$sal$hash`). Nulo si la cuenta solo usa Google |
 | email | CITEXT | No | | Correo de Google, sin distinguir mayúsculas. **UNIQUE**, validado con expresión regular |
 | nombre | VARCHAR(150) | No | | Nombre mostrado |
 | foto_url | TEXT | Sí | | Foto de perfil de Google |
@@ -119,6 +208,8 @@ El modelo está en **3FN**: cada atributo depende solo de la llave primaria de s
 | activo | BOOLEAN | No | `TRUE` | Permite bloquear el acceso sin borrar |
 | ultimo_acceso | TIMESTAMPTZ | Sí | | Último inicio de sesión |
 | creado_en / actualizado_en | TIMESTAMPTZ | No | `NOW()` | Auditoría (trigger) |
+
+CHECK `ck_usuarios_metodo_acceso`: toda cuenta tiene Google, contraseña o ambos.
 
 ### academico.materias — RF03, HU02
 | Columna | Tipo | Nulo | Default | Descripción |
@@ -147,6 +238,8 @@ El modelo está en **3FN**: cada atributo depende solo de la llave primaria de s
 
 Índices: `(usuario_id, materia_id)`, `(usuario_id, estado)`, `(usuario_id, fecha_limite)` → uno por cada filtro de RF06.
 
+Trigger `trg_tareas_bloquear_completadas`: si la tarea ya está completada, cualquier `UPDATE` falla con el error `TAREA_COMPLETADA`. Así la regla "una tarea completada no se modifica" se cumple aunque alguien intente saltarse el backend.
+
 ### academico.apuntes — RF05, RF07, HU06, HU07
 | Columna | Tipo | Nulo | Default | Descripción |
 |---|---|---|---|---|
@@ -164,11 +257,57 @@ El modelo está en **3FN**: cada atributo depende solo de la llave primaria de s
 |---|---|---|---|---|
 | id | UUID | No | `gen_random_uuid()` | PK |
 | usuario_id | UUID | No | | FK → `auth.usuarios.id` |
-| fecha_inicio / fecha_fin | DATE | No | hoy / — | Rango del plan (`fecha_fin >= fecha_inicio`) |
-| contenido | TEXT | No | | Plan devuelto por la IA |
-| tareas_incluidas | UUID[] | No | `'{}'` | Tareas pendientes enviadas a la IA |
-| modelo_ia | VARCHAR(80) | Sí | | Modelo usado |
-| creado_en | TIMESTAMPTZ | No | `NOW()` | |
+| titulo | VARCHAR(200) | Sí | | Título del plan |
+| alcance | VARCHAR(20) | No | `'general'` | `general`, `materia`, `apuntes` o `examen` |
+| materia_id / examen_id | UUID | Sí | | FK compuestas → materia o examen del plan |
+| fecha_inicio / fecha_fin | DATE | No | | Rango del plan |
+| contenido | TEXT | No | | Resumen de la estrategia escrito por la IA |
+| consejos | TEXT[] | No | `'{}'` | Consejos de la IA |
+| horas_por_dia | SMALLINT | Sí | | Horas de estudio por día elegidas |
+| tareas_incluidas / apuntes_incluidos | UUID[] | No | `'{}'` | Contexto enviado a la IA |
+| modelo_ia | VARCHAR(80) | Sí | | Proveedor y modelo usados |
+| reorganizado_en | TIMESTAMPTZ | Sí | | Última reorganización aplicada |
+
+### academico.plan_actividades — RF08
+| Columna | Tipo | Nulo | Descripción |
+|---|---|---|---|
+| id | UUID | No | PK |
+| plan_id + usuario_id | UUID | No | FK compuesta → `planes_estudio` (CASCADE) |
+| fecha | DATE | No | Día de la actividad |
+| hora_inicio / hora_fin | TIME | No | CHECK `hora_fin > hora_inicio` |
+| tipo | ENUM `tipo_actividad` | No | `estudio`, `tarea`, `repaso`, `practica`, `descanso` |
+| titulo / descripcion | VARCHAR(200) / TEXT | No / Sí | Qué hacer en la sesión |
+| materia_id / tarea_id | UUID | Sí | FK compuestas (SET NULL solo en esa columna si se borra la materia o tarea) |
+| completada / completada_en | BOOLEAN / TIMESTAMPTZ | No / Sí | Avance del estudiante |
+
+### academico.examenes
+| Columna | Tipo | Nulo | Descripción |
+|---|---|---|---|
+| id | UUID | No | PK |
+| usuario_id, materia_id | UUID | No | FK compuesta → `materias(id, usuario_id)` |
+| titulo | VARCHAR(200) | No | Ej. "Segundo parcial" |
+| fecha | TIMESTAMPTZ | No | Fecha y hora del examen |
+| temas / notas | TEXT | Sí | Temas (uno por línea) y notas |
+
+### academico.cuestionarios y academico.cuestionario_intentos
+| Columna | Tipo | Descripción |
+|---|---|---|
+| preguntas | JSONB | `[{ pregunta, opciones[4], correcta, explicacion, tema }]`. CHECK: arreglo no vacío. La respuesta correcta **nunca** se envía al cliente antes de calificar |
+| dificultad | VARCHAR(10) | `facil`, `media`, `dificil` |
+| materia_id / examen_id | UUID | Origen del cuestionario (FK compuestas) |
+| intentos.respuestas | JSONB | Índice elegido en cada pregunta (o `null`) |
+| intentos.correctas / total / puntaje | SMALLINT / NUMERIC(5,2) | CHECK `puntaje BETWEEN 0 AND 100` |
+| intentos.temas_debiles | TEXT[] | Temas fallados; alimentan el plan de preparación de exámenes |
+
+### academico.flashcards
+| Columna | Tipo | Default | Descripción |
+|---|---|---|---|
+| frente / reverso | TEXT | | Pregunta y respuesta |
+| materia_id / apunte_id | UUID | | FK compuestas (el apunte se pone en NULL si se borra) |
+| repeticiones | SMALLINT | 0 | Repasos exitosos seguidos |
+| intervalo_dias | SMALLINT | 0 | Días hasta el siguiente repaso |
+| facilidad | NUMERIC(4,2) | 2.50 | Factor SM-2 (CHECK entre 1.30 y 3.50) |
+| proximo_repaso | DATE | hoy | Cuándo vuelve a mostrarse |
 
 ### Vista academico.v_resumen_materias
 Por cada materia: total de tareas, pendientes, en progreso, completadas, vencidas y la próxima fecha de entrega. Pensada para el panel principal del frontend.
@@ -180,7 +319,9 @@ Por cada materia: total de tareas, pendientes, en progreso, completadas, vencida
 - **Un usuario de BD por microservicio**: `ms_auth` solo accede al esquema `auth` y `ms_academico` solo al esquema `academico`. Las contraseñas vienen del `.env`.
 - **Borrado en cascada**: si se elimina un usuario se eliminan sus materias, tareas, apuntes y planes; si se elimina una materia, sus tareas y apuntes.
 - **TIMESTAMPTZ** con zona `America/Guatemala` para que las fechas de entrega sean correctas sin importar dónde esté el servidor.
-- **No se guardan contraseñas ni tokens**: Google valida la identidad y el JWT vive en el cliente (RF11: cerrar sesión = eliminar el JWT del cliente).
+- **Contraseñas solo como hash scrypt con sal**; los tokens no se guardan (el JWT vive en el cliente y cerrar sesión lo elimina, RF11).
+- **Reglas de negocio en la base**: el trigger de tareas completadas, los CHECK de horarios, puntajes y facilidad, y las FK compuestas de todas las tablas nuevas.
+- **Migración segura**: `03_mejoras.sql` usa `IF NOT EXISTS` y se puede ejecutar varias veces sobre una base con datos.
 
 ## Comandos útiles
 
@@ -194,6 +335,10 @@ docker compose logs postgres
 # Cargar datos de prueba (funciona igual en PowerShell, CMD y Linux)
 docker compose cp database/seeds/seed_dev.sql postgres:/tmp/seed_dev.sql
 docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/seed_dev.sql
+
+# Actualizar una base existente a la versión 2 (no borra datos)
+docker compose cp database/init/03_mejoras.sql postgres:/tmp/03_mejoras.sql
+docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/03_mejoras.sql
 
 # Entrar a la consola SQL
 docker compose exec postgres psql -U eduplan_admin -d eduplan
