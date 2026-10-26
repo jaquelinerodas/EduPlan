@@ -1,7 +1,13 @@
 
+#  EduPlan · docker-compose.yml
+#  FASE 4: PostgreSQL + ms-auth + ms-academico + nginx (con el frontend).
+#  Entrada única: http://localhost  (Nginx enruta /auth y /api)
+#  En la Fase 5 se agrega HTTPS y se cierran los puertos 3001/3002.
+
 name: eduplan
 
 services:
+  
   postgres:
     image: postgres:16-alpine
     container_name: eduplan-postgres
@@ -18,7 +24,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       
       - ./database/init:/docker-entrypoint-initdb.d:ro
-    
+   
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     healthcheck:
@@ -29,7 +35,9 @@ services:
     networks:
       - eduplan-net
 
- 
+
+  # Microservicio 1: autenticación y usuarios
+  
   ms-auth:
     build: ./ms-auth
     container_name: eduplan-ms-auth
@@ -48,7 +56,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    
+
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
@@ -60,7 +68,9 @@ services:
     networks:
       - eduplan-net
 
-
+ 
+  # Microservicio 2: materias, tareas, apuntes e IA
+ 
   ms-academico:
     build: ./ms-academico
     container_name: eduplan-ms-academico
@@ -77,6 +87,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    
     ports:
       - "127.0.0.1:3002:3002"
     healthcheck:
@@ -85,6 +96,31 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - eduplan-net
+
+  
+  # Proxy inverso + frontend (único servicio pensado para el exterior)
+  
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: eduplan-nginx
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      ms-auth:
+        condition: service_healthy
+      ms-academico:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - eduplan-net
 
