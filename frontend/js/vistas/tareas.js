@@ -4,7 +4,7 @@ import { obtenerMaterias, invalidarMaterias } from '../datos.js';
 import { iconos } from '../iconos.js';
 import { aviso, abrirFormulario, confirmar, esqueleto, errorCarga, vacio } from '../ui.js';
 import {
-  esc, colorSeguro, describirEntrega, aEntradaFechaHora, desdeEntradaFechaHora, plural, ESTADOS, PRIORIDADES,
+  esc, colorSeguro, describirEntrega, formato, aEntradaFechaHora, desdeEntradaFechaHora, plural, ESTADOS, PRIORIDADES,
 } from '../utilidades.js';
 
 const FILTROS = ['materiaId', 'estado', 'prioridad', 'desde', 'hasta', 'vencidas'];
@@ -22,8 +22,9 @@ function renglon(t) {
   const hecha = t.estado === 'completada';
   return `
     <li class="renglon${hecha ? ' renglon--hecho' : ''}" style="--color:${colorSeguro(t.materiaColor)}">
-      <input type="checkbox" class="check" data-alternar="${esc(t.id)}" ${hecha ? 'checked' : ''}
-        aria-label="${hecha ? 'Marcar como pendiente' : 'Marcar como completada'}: ${esc(t.titulo)}">
+      <input type="checkbox" class="check" data-completar="${esc(t.id)}" ${hecha ? 'checked disabled' : ''}
+        aria-label="${hecha ? `Completada: ${esc(t.titulo)}` : `Marcar como completada: ${esc(t.titulo)}`}"
+        ${hecha && t.completadaEn ? `title="Completada el ${esc(formato.fechaHora(t.completadaEn))}"` : ''}>
       <div>
         <div class="renglon__titulo">${esc(t.titulo)}</div>
         ${t.descripcion ? `<p class="renglon__descripcion">${esc(t.descripcion)}</p>` : ''}
@@ -35,7 +36,7 @@ function renglon(t) {
       </div>
       <div class="renglon__acciones">
         <span class="prioridad prioridad--${esc(t.prioridad)}">${esc(PRIORIDADES[t.prioridad])}</span>
-        <button type="button" class="boton boton--icono" data-editar="${esc(t.id)}" aria-label="Editar ${esc(t.titulo)}">${iconos.editar}</button>
+        ${hecha ? '' : `<button type="button" class="boton boton--icono" data-editar="${esc(t.id)}" aria-label="Editar ${esc(t.titulo)}">${iconos.editar}</button>`}
         <button type="button" class="boton boton--icono peligro" data-borrar="${esc(t.id)}" aria-label="Eliminar ${esc(t.titulo)}">${iconos.borrar}</button>
       </div>
     </li>`;
@@ -57,7 +58,8 @@ function formularioTarea(materias, t = {}) {
         <select class="selector" name="prioridad">${opciones(PRIORIDADES, t.prioridad || 'media')}</select>
       </label>
     </div>
-    ${t.id ? `<label class="campo"><span>Estado</span><select class="selector" name="estado">${opciones(ESTADOS, t.estado)}</select></label>` : ''}
+    ${t.id ? `<label class="campo"><span>Estado</span><select class="selector" name="estado">${opciones({ pendiente: 'Pendiente', en_progreso: 'En progreso' }, t.estado)}</select>
+      <small class="acceso__ayuda">Para completarla usa la casilla de la lista. Una tarea completada ya no se puede modificar.</small></label>` : ''}
     <label class="campo"><span>Descripción <span class="opcional">(opcional)</span></span>
       <textarea class="area-texto" name="descripcion" rows="3" maxlength="5000" style="min-height:6rem">${esc(t.descripcion)}</textarea>
     </label>`;
@@ -215,20 +217,28 @@ export async function renderTareas(contenedor, parametros) {
     }
   });
 
-  // HU04: marcar como completada o regresar a pendiente
+  // HU04: completar una tarea pide confirmación y es definitivo
   lista.addEventListener('change', async (e) => {
-    const id = e.target.dataset?.alternar;
+    const id = e.target.dataset?.completar;
     if (!id) return;
-    const completar = e.target.checked;
-    e.target.disabled = true;
+    const casilla = e.target;
+    casilla.checked = false;
+    const tarea = tareas.find((t) => t.id === id);
+    const ok = await confirmar({
+      titulo: 'Completar tarea',
+      mensaje: `¿Marcar «${tarea.titulo}» como completada? Después ya no podrás editarla ni cambiar su estado.`,
+      textoConfirmar: 'Sí, completar',
+      tono: 'exito',
+    });
+    if (!ok) return;
+    casilla.disabled = true;
     try {
-      await api.cambiarEstado(id, completar ? 'completada' : 'pendiente');
+      await api.cambiarEstado(id, 'completada');
       invalidarMaterias();
-      aviso(completar ? 'Tarea completada' : 'Tarea marcada como pendiente');
+      aviso('Tarea completada');
       cargar();
     } catch (error) {
-      e.target.checked = !completar;
-      e.target.disabled = false;
+      casilla.disabled = false;
       aviso(error.message, 'error');
     }
   });

@@ -105,7 +105,7 @@ export function abrirFormulario({ titulo, contenido, textoEnviar = 'Guardar', al
 }
 
 /* ---------- Confirmación ---------- */
-export function confirmar({ titulo, mensaje, textoConfirmar = 'Eliminar' }) {
+export function confirmar({ titulo, mensaje, textoConfirmar = 'Eliminar', tono = 'peligro' }) {
   return new Promise((resolver) => {
     const dialogo = document.createElement('dialog');
     dialogo.className = 'modal';
@@ -115,7 +115,7 @@ export function confirmar({ titulo, mensaje, textoConfirmar = 'Eliminar' }) {
       <div class="modal__cuerpo"><p>${esc(mensaje)}</p></div>
       <div class="modal__pie">
         <button type="button" class="boton boton--fantasma" data-respuesta="no">Cancelar</button>
-        <button type="button" class="boton boton--peligro" data-respuesta="si">${esc(textoConfirmar)}</button>
+        <button type="button" class="boton ${tono === 'exito' ? 'boton--exito' : 'boton--peligro'}" data-respuesta="si">${esc(textoConfirmar)}</button>
       </div>`;
     document.body.append(dialogo);
     let respuesta = false;

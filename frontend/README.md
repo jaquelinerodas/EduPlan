@@ -2,6 +2,24 @@
 
 Aplicación de una sola página (SPA) en **HTML, CSS y JavaScript puro**, con módulos ES y sin frameworks ni dependencias externas. Nginx la sirve en `http://localhost` y todas las peticiones salen al mismo dominio (`/auth/*` y `/api/*`), así que no hace falta configurar CORS.
 
+## Vistas
+
+| Ruta | Vista |
+|---|---|
+| `#/entrar` | Acceso: correo y contraseña, crear cuenta o continuar con Google |
+| `#/panel` | Hoy en tu plan, próximos exámenes, tarjetas por repasar, atrasadas, semana y avance por materia |
+| `#/calendario` | Mes, semana o día con tareas, exámenes y sesiones de estudio |
+| `#/tareas` | Filtros (RF06) y completar con confirmación; una tarea completada queda bloqueada |
+| `#/examenes` | Exámenes con cuenta regresiva, temas, plan de preparación y práctica |
+| `#/materias` | Pendientes, completadas, vencidas, avance, próximo examen, apuntes y tarjetas |
+| `#/apuntes` | Editor con resumen de IA y accesos para crear cuestionario o tarjetas |
+| `#/plan` | Planes por día, avance, reorganización con vista previa e historial |
+| `#/cuestionarios` · `#/cuestionarios/<id>` | Lista, resolver pregunta por pregunta y revisión con explicaciones |
+| `#/tarjetas` · `#/tarjetas?repaso=1` | Mazos por materia y repaso con tarjeta que se voltea (teclas: espacio, 1, 2, 3) |
+| `#/estado` | Estado de los servicios (solo administradores) |
+
+La campana muestra las **alertas** (`/api/alertas`). Con permiso del usuario también se envían notificaciones del navegador para los avisos importantes cuando EduPlan está en otra pestaña.
+
 ## Diseño
 
 La interfaz toma como concepto **el cuaderno del estudiante**:
@@ -9,6 +27,7 @@ La interfaz toma como concepto **el cuaderno del estudiante**:
 | Elemento | Uso |
 |---|---|
 | Papel cuadriculado | Fondo de la aplicación |
+| Azul de marca `#4A63E7` / `#8FA3F7` | Logo de EduPlan (birrete sobre una lista de tareas) |
 | Tinta azul `#2340A0` | Color principal: botones, enlaces, día actual |
 | Rojo de corrección `#C22F3B` | Tareas vencidas y acciones de eliminar |
 | Verde de "visto bueno" `#23784C` | Tareas completadas y avance |
@@ -29,9 +48,11 @@ frontend/
 │   ├── base.css            # Tokens de diseño (colores, tipografía, espaciado), modo oscuro y reset
 │   ├── layout.css          # Pantalla de inicio de sesión y marco de la app (lateral, barra móvil)
 │   ├── componentes.css     # Botones, formularios, etiquetas, renglones, modales, avisos
-│   └── vistas.css          # Estilos propios de cada vista
+│   ├── vistas.css          # Panel, materias, apuntes, estado
+│   └── estudio.css         # Acceso, alertas, calendario, exámenes, plan por días, cuestionarios y tarjetas
 ├── js/
-│   ├── app.js              # Arranque y enrutador por hash (#/panel, #/tareas...)
+│   ├── app.js              # Arranque, navegación agrupada y enrutador por hash (#/panel, #/cuestionarios/<id>...)
+│   ├── alertas.js          # Campana de avisos y notificaciones del navegador
 │   ├── sesion.js           # JWT: lectura del retorno de Google, expiración y cierre de sesión
 │   ├── api.js              # Cliente de la API (agrega Authorization: Bearer <JWT>)
 │   ├── datos.js            # Caché de materias
@@ -39,14 +60,16 @@ frontend/
 │   ├── markdown.js         # Convierte el texto de la IA a HTML seguro
 │   ├── utilidades.js       # Escape de HTML, formato de fechas y textos
 │   ├── iconos.js           # Iconos SVG y logotipo
-│   └── vistas/             # entrar · panel · tareas · materias · apuntes · plan · estado
+│   └── vistas/             # entrar · panel · calendario · tareas · examenes · materias · apuntes
+│                           # plan · cuestionarios · tarjetas · estado
 ├── fuentes/                # Archivos .woff2 y sus licencias
 └── img/favicon.svg
 ```
 
 ## Flujo de sesión
 
-1. "Continuar con Google" lleva a `/auth/google`.
+1. Con correo y contraseña, el formulario llama a `/auth/login` o `/auth/registro` y recibe el JWT directamente.
+   Con "Continuar con Google" se va a `/auth/google`.
 2. Al volver, ms-auth redirige a `http://localhost/#token=<JWT>`.
 3. `sesion.js` guarda el token en `localStorage` y lo quita de la barra de direcciones.
 4. Cada petición lleva `Authorization: Bearer <JWT>`.

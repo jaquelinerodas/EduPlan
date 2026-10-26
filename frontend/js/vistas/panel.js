@@ -1,25 +1,23 @@
-/** Panel principal: resumen del día, entregas atrasadas y agenda de la semana. */
+/** Panel principal: resumen del día, lo de hoy, atrasadas y agenda de la semana. */
 import { api } from '../api.js';
-import { obtenerMaterias } from '../datos.js';
+import { obtenerMaterias, invalidarMaterias } from '../datos.js';
 import { iconos } from '../iconos.js';
-import { markdownAHtml } from '../markdown.js';
-import { aviso, esqueleto, errorCarga, vacio } from '../ui.js';
+import { aviso, confirmar, esqueleto, errorCarga, vacio } from '../ui.js';
 import {
-  esc, colorSeguro, formato, saludo, primerNombre, plural, describirEntrega, inicioDelDia, PRIORIDADES,
+  esc, colorSeguro, formato, saludo, primerNombre, plural, describirEntrega, inicioDelDia, aISO, hoyISO,
+  cuentaRegresiva, diasHasta, PRIORIDADES,
 } from '../utilidades.js';
 
 function fraseResumen(r) {
   const abiertas = r.pendientes + r.enProgreso;
-  if (r.tareas === 0) return 'Todavía no tienes tareas. Empieza registrando tus materias y sus entregas.';
-  if (abiertas === 0) return 'No tienes tareas pendientes. Buen momento para repasar tus apuntes.';
-
-  const partes = [`Tienes <b>${plural(abiertas, 'tarea abierta', 'tareas abiertas')}</b>`];
+  if (r.tareas === 0 && !r.examenesProximos) return 'Todavía no tienes tareas. Empieza registrando tus materias y sus entregas.';
+  const partes = [];
+  partes.push(abiertas ? `<b>${plural(abiertas, 'tarea abierta', 'tareas abiertas')}</b>` : 'ninguna tarea abierta');
   if (r.vencidas) partes.push(`<b class="vencidas">${plural(r.vencidas, 'vencida', 'vencidas')}</b>`);
-  partes.push(r.proximos7Dias
-    ? `<b>${plural(r.proximos7Dias, 'entrega', 'entregas')}</b> en los próximos 7 días`
-    : 'ninguna entrega en los próximos 7 días');
-  const ultima = partes.pop();
-  return `${partes.join(', ')} y ${ultima}.`;
+  if (r.proximos7Dias) partes.push(`<b>${plural(r.proximos7Dias, 'entrega', 'entregas')}</b> en los próximos 7 días`);
+  if (r.examenesProximos) partes.push(`<b>${plural(r.examenesProximos, 'examen próximo', 'exámenes próximos')}</b>`);
+  const ultima = partes.length > 1 ? ` y ${partes.pop()}` : '';
+  return `Tienes ${partes.join(', ')}${ultima}.`;
 }
 
 function renglonTarea(t) {
@@ -38,33 +36,75 @@ function renglonTarea(t) {
     </li>`;
 }
 
-function agendaSemana(tareas) {
+function agendaSemana(tareas, examenes) {
   const hoy = inicioDelDia();
-  const dias = Array.from({ length: 7 }, (_, i) => new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + i));
-
-  return dias.map((dia, i) => {
+  return Array.from({ length: 7 }, (_, i) => {
+    const dia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + i);
     const siguiente = new Date(dia.getFullYear(), dia.getMonth(), dia.getDate() + 1);
-    const delDia = tareas.filter((t) => {
-      const f = new Date(t.fechaLimite);
-      return f >= dia && f < siguiente && !t.vencida;
-    });
+    const enDia = (f) => new Date(f) >= dia && new Date(f) < siguiente;
+    const delDia = tareas.filter((t) => enDia(t.fechaLimite) && !t.vencida);
+    const examenesDia = examenes.filter((e) => enDia(e.fecha));
     const nombre = i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : formato.diaSemana(dia);
     const finde = dia.getDay() === 0 || dia.getDay() === 6;
+    const vacioDia = !delDia.length && !examenesDia.length;
 
     return `
       <div class="dia${i === 0 ? ' dia--hoy' : ''}${finde ? ' dia--finde' : ''}">
         <div class="dia__nombre"><span>${esc(nombre)}</span><span class="dia__numero">${dia.getDate()}</span></div>
         <div class="dia__tareas">
-          ${delDia.length
-            ? delDia.map((t) => `
-              <a class="entrega entrega--${esc(t.prioridad)}" href="#/tareas?materiaId=${esc(t.materiaId)}" style="--color:${colorSeguro(t.materiaColor)}">
-                <strong>${esc(t.titulo)}</strong>
-                <span>${esc(formato.hora(t.fechaLimite))} · ${esc(t.materia)}</span>
-              </a>`).join('')
-            : '<span class="dia__libre">Sin entregas</span>'}
+          ${examenesDia.map((e) => `
+            <a class="entrega entrega--examen" href="#/examenes" style="--color:var(--c-examen)">
+              <strong>Examen: ${esc(e.titulo)}</strong>
+              <span>${esc(formato.hora(e.fecha))} · ${esc(e.materia)}</span>
+            </a>`).join('')}
+          ${delDia.map((t) => `
+            <a class="entrega" href="#/tareas?materiaId=${esc(t.materiaId)}" style="--color:${colorSeguro(t.materiaColor)}">
+              <strong>${esc(t.titulo)}</strong>
+              <span>${esc(formato.hora(t.fechaLimite))} · ${esc(t.materia)}</span>
+            </a>`).join('')}
+          ${vacioDia ? '<span class="dia__libre">Sin entregas</span>' : ''}
         </div>
       </div>`;
   }).join('');
+}
+
+function bloqueHoy({ sesiones, examenes, resumen }) {
+  return `
+    <div class="panel__hoy">
+      <section class="hoja" aria-labelledby="hoy-plan">
+        <div class="hoja__encabezado"><h2 id="hoy-plan">Hoy en tu plan</h2><a href="#/plan">Ver plan</a></div>
+        ${sesiones.length
+          ? `<ul class="mini-lista">${sesiones.map((s) => `
+              <li class="${s.completado ? 'hecha' : ''}">
+                <input type="checkbox" class="check" data-sesion="${esc(s.id)}" data-plan="${esc(s.planId)}" ${s.completado ? 'checked' : ''}
+                  aria-label="${s.completado ? 'Marcar como pendiente' : 'Marcar como hecha'}: ${esc(s.titulo)}">
+                <strong>${esc(s.titulo)}</strong>
+                <small>${esc(formato.hora(s.inicio))} – ${esc(formato.hora(s.fin))}${s.materia ? ` · ${esc(s.materia)}` : ''}</small>
+              </li>`).join('')}</ul>`
+          : `<p class="mini-lista__vacio">No tienes sesiones de estudio hoy. <a href="#/plan?nuevo=general">Crea un plan</a> y el asistente organizará tus días.</p>`}
+      </section>
+
+      <section class="hoja" aria-labelledby="hoy-examenes">
+        <div class="hoja__encabezado"><h2 id="hoy-examenes">Próximos exámenes</h2><a href="#/examenes">Ver todos</a></div>
+        ${examenes.length
+          ? `<ul class="mini-lista">${examenes.slice(0, 3).map((e) => `
+              <li style="grid-template-columns:1fr">
+                <strong style="grid-column:1">${esc(e.titulo)}</strong>
+                <small style="grid-column:1">${esc(e.materia)} · <b style="color:${diasHasta(e.fecha) <= 3 ? 'var(--rojo)' : 'var(--tinta)'}">${esc(cuentaRegresiva(e.fecha))}</b>${e.mejorPuntaje !== null ? ` · práctica ${Math.round(e.mejorPuntaje)}%` : ''}</small>
+              </li>`).join('')}</ul>`
+          : '<p class="mini-lista__vacio">Sin exámenes próximos. <a href="#/examenes">Registra uno</a> para prepararlo con tiempo.</p>'}
+      </section>
+
+      <section class="hoja" aria-labelledby="hoy-tarjetas">
+        <div class="hoja__encabezado"><h2 id="hoy-tarjetas">Repaso de tarjetas</h2><a href="#/tarjetas">Ver tarjetas</a></div>
+        <div class="mini-lista__vacio" style="display:grid;gap:var(--e-3)">
+          ${resumen.tarjetasPendientes
+            ? `<p><b style="font-size:var(--t-lg);font-family:var(--fuente-titulos);color:var(--grafito)">${resumen.tarjetasPendientes}</b> ${resumen.tarjetasPendientes === 1 ? 'tarjeta te espera' : 'tarjetas te esperan'} hoy.</p>
+               <a class="boton boton--primario" href="#/tarjetas?repaso=1">${iconos.jugar}Empezar repaso</a>`
+            : `<p>No tienes tarjetas pendientes hoy.</p><a class="boton boton--secundario" href="#/tarjetas">${iconos.chispa}Crear tarjetas</a>`}
+        </div>
+      </section>
+    </div>`;
 }
 
 export async function renderPanel(contenedor, _parametros, usuario) {
@@ -72,16 +112,18 @@ export async function renderPanel(contenedor, _parametros, usuario) {
 
   async function cargar() {
     try {
-      const [{ resumen }, { tareas }, materias, { planes }] = await Promise.all([
+      const hoy = hoyISO();
+      const [{ resumen }, { tareas }, materias, { examenes }, { eventos }] = await Promise.all([
         api.resumen(),
         api.tareas(),
         obtenerMaterias({ forzar: true }),
-        api.planes(),
+        api.examenes({ periodo: 'proximos' }),
+        api.calendario(hoy, hoy),
       ]);
       const abiertas = tareas.filter((t) => t.estado !== 'completada');
       const vencidas = abiertas.filter((t) => t.vencida);
+      const sesiones = eventos.filter((e) => e.tipo === 'sesion');
       const porcentaje = resumen.tareas ? Math.round((resumen.completadas / resumen.tareas) * 100) : 0;
-      const ultimoPlan = planes[0];
 
       contenedor.innerHTML = `
         <div class="panel">
@@ -92,12 +134,14 @@ export async function renderPanel(contenedor, _parametros, usuario) {
             ${resumen.tareas ? `
               <div class="avance-general">
                 <span>Avance general</span>
-                <span><b>${resumen.completadas}</b> de ${resumen.tareas} completadas</span>
+                <span><b>${resumen.completadas}</b> de ${resumen.tareas} tareas completadas</span>
                 <div class="avance" role="progressbar" aria-label="Tareas completadas" aria-valuenow="${porcentaje}" aria-valuemin="0" aria-valuemax="100">
                   <span style="--valor:${porcentaje}%"></span>
                 </div>
               </div>` : ''}
           </section>
+
+          ${materias.length ? bloqueHoy({ sesiones, examenes, resumen }) : ''}
 
           ${vencidas.length ? `
             <section class="hoja atrasadas" aria-labelledby="atrasadas-titulo">
@@ -111,74 +155,79 @@ export async function renderPanel(contenedor, _parametros, usuario) {
           <section class="hoja" aria-labelledby="semana-titulo">
             <div class="hoja__encabezado">
               <h2 id="semana-titulo">Esta semana</h2>
-              <a class="boton boton--secundario" href="#/tareas">${iconos.mas}Nueva tarea</a>
+              <a class="boton boton--secundario" href="#/calendario?vista=semana&fecha=${aISO(new Date())}">${iconos.calendario}Ver calendario</a>
             </div>
             ${materias.length
-              ? `<div class="semana">${agendaSemana(abiertas)}</div>`
+              ? `<div class="semana">${agendaSemana(abiertas, examenes)}</div>`
               : vacio({
                 icono: iconos.materias,
                 titulo: 'Registra tu primera materia',
-                texto: 'Las tareas y los apuntes se organizan por materia. Agrega las que llevas este ciclo.',
+                texto: 'Las tareas, apuntes y exámenes se organizan por materia. Agrega las que llevas este ciclo.',
                 accion: '<a class="boton boton--primario" href="#/materias">Agregar materia</a>',
               })}
           </section>
 
-          <div class="panel__columnas">
+          ${materias.length ? `
             <section class="hoja" aria-labelledby="materias-titulo">
               <div class="hoja__encabezado">
-                <h2 id="materias-titulo">Materias</h2>
+                <h2 id="materias-titulo">Avance por materia</h2>
                 <a href="#/materias">Administrar</a>
               </div>
-              ${materias.length ? `
-                <ul class="lista-materias-mini">
-                  ${materias.map((m) => {
-                    const pct = m.totalTareas ? Math.round((m.completadas / m.totalTareas) * 100) : 0;
-                    return `
-                      <li>
-                        <div class="fila">
-                          <a href="#/tareas?materiaId=${esc(m.id)}">${esc(m.nombre)}</a>
-                          <span>${plural(m.pendientes + m.enProgreso, 'abierta', 'abiertas')}${m.vencidas ? ` · <b style="color:var(--rojo)">${plural(m.vencidas, 'vencida', 'vencidas')}</b>` : ''}</span>
-                        </div>
-                        <div class="avance" aria-hidden="true"><span style="--valor:${pct}%;--color:${colorSeguro(m.color)}"></span></div>
-                      </li>`;
-                  }).join('')}
-                </ul>` : '<p class="hoja__cuerpo">Aún no tienes materias.</p>'}
-            </section>
-
-            <section class="hoja" aria-labelledby="plan-titulo">
-              <div class="hoja__encabezado">
-                <h2 id="plan-titulo">Plan de estudio</h2>
-                <a href="#/plan">${ultimoPlan ? 'Ver completo' : 'Crear plan'}</a>
-              </div>
-              <div class="plan-mini">
-                ${ultimoPlan ? `
-                  <p class="firma-ia">${iconos.chispa}Generado el ${esc(formato.fechaHora(ultimoPlan.creadoEn))}</p>
-                  <div class="texto-ia">${markdownAHtml(ultimoPlan.contenido.split('\n').slice(0, 8).join('\n'))}</div>
-                  <a href="#/plan">Seguir leyendo</a>`
-                  : `<p>El asistente reparte tus tareas pendientes en los próximos días según su fecha y prioridad.</p>
-                     <a class="boton boton--ia" href="#/plan">${iconos.chispa}Generar mi plan</a>`}
-              </div>
-            </section>
-          </div>
+              <ul class="lista-materias-mini">
+                ${materias.map((m) => {
+                  const pct = m.totalTareas ? Math.round((m.completadas / m.totalTareas) * 100) : 0;
+                  return `
+                    <li>
+                      <div class="fila">
+                        <a href="#/tareas?materiaId=${esc(m.id)}">${esc(m.nombre)}</a>
+                        <span>${plural(m.pendientes + m.enProgreso, 'pendiente', 'pendientes')} · ${plural(m.completadas, 'completada', 'completadas')}${m.vencidas ? ` · <b style="color:var(--rojo)">${plural(m.vencidas, 'vencida', 'vencidas')}</b>` : ''}</span>
+                      </div>
+                      <div class="avance" aria-hidden="true"><span style="--valor:${pct}%;--color:${colorSeguro(m.color)}"></span></div>
+                    </li>`;
+                }).join('')}
+              </ul>
+            </section>` : ''}
         </div>`;
     } catch (error) {
       contenedor.innerHTML = errorCarga(error);
     }
   }
 
-  // Completar tareas desde el panel (HU04)
   contenedor.addEventListener('change', async (e) => {
-    const id = e.target.dataset?.completar;
-    if (!id) return;
-    e.target.disabled = true;
-    try {
-      await api.cambiarEstado(id, 'completada');
-      aviso('Tarea completada');
-      cargar();
-    } catch (error) {
+    // Completar una tarea atrasada (con confirmación, es definitivo)
+    const tareaId = e.target.dataset?.completar;
+    if (tareaId) {
       e.target.checked = false;
+      const ok = await confirmar({
+        titulo: 'Completar tarea',
+        mensaje: 'Después de completarla ya no podrás editarla ni cambiar su estado.',
+        textoConfirmar: 'Sí, completar', tono: 'exito',
+      });
+      if (!ok) return;
+      try {
+        await api.cambiarEstado(tareaId, 'completada');
+        invalidarMaterias();
+        aviso('Tarea completada');
+        cargar();
+      } catch (error) {
+        aviso(error.message, 'error');
+      }
+      return;
+    }
+    // Marcar una sesión de estudio de hoy
+    const sesionId = e.target.dataset?.sesion;
+    if (sesionId) {
+      const hecha = e.target.checked;
+      e.target.disabled = true;
+      try {
+        await api.marcarActividad(e.target.dataset.plan, sesionId, hecha);
+        e.target.closest('li').classList.toggle('hecha', hecha);
+        aviso(hecha ? 'Sesión marcada como hecha' : 'Sesión marcada como pendiente');
+      } catch (error) {
+        e.target.checked = !hecha;
+        aviso(error.message, 'error');
+      }
       e.target.disabled = false;
-      aviso(error.message, 'error');
     }
   });
   contenedor.addEventListener('click', (e) => {

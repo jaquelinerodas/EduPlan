@@ -1,8 +1,4 @@
-/**
- * Manejo de la sesión en el cliente.
- * - El JWT llega desde ms-auth en el fragmento de la URL: /#token=...
- * - Se guarda en localStorage y se elimina al cerrar sesión (RF11).
- */
+
 const CLAVE = 'eduplan_token';
 let tokenEnMemoria = null; // respaldo si el navegador bloquea localStorage
 let temporizador = null;
@@ -27,7 +23,7 @@ export function obtenerToken() {
   }
 }
 
-function guardarToken(token) {
+export function guardarToken(token) {
   tokenEnMemoria = token;
   try { localStorage.setItem(CLAVE, token); } catch { /* modo privado */ }
 }

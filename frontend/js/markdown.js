@@ -1,9 +1,4 @@
-/**
- * Convierte el Markdown sencillo que devuelve la IA en HTML seguro.
- * Primero escapa TODO el texto y después aplica el formato, así ningún
- * contenido de la IA puede inyectar etiquetas HTML.
- * Soporta: ### títulos, **negritas**, *cursivas*, listas (- , * , 1.), --- y párrafos.
- */
+
 import { esc } from './utilidades.js';
 
 function enLinea(texto) {

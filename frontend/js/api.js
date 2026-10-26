@@ -65,6 +65,8 @@ const conFiltros = (ruta, filtros = {}) => {
 export const api = {
   // ms-auth
   perfil: () => peticion('GET', '/auth/me'),
+  login: (datos) => peticion('POST', '/auth/login', datos),
+  registro: (datos) => peticion('POST', '/auth/registro', datos),
   saludAuth: () => peticion('GET', '/auth/health'),
 
   // ms-academico
@@ -89,7 +91,35 @@ export const api = {
   borrarApunte: (id) => peticion('DELETE', `/api/apuntes/${id}`),
 
   resumirApunte: (id) => peticion('POST', `/api/ia/resumen/${id}`),
-  generarPlan: (opciones) => peticion('POST', '/api/ia/plan-estudio', opciones),
-  planes: () => peticion('GET', '/api/ia/planes'),
-  borrarPlan: (id) => peticion('DELETE', `/api/ia/planes/${id}`),
+
+  alertas: () => peticion('GET', '/api/alertas'),
+  calendario: (desde, hasta) => peticion('GET', conFiltros('/api/calendario', { desde, hasta })),
+
+  examenes: (filtros) => peticion('GET', conFiltros('/api/examenes', filtros)),
+  crearExamen: (datos) => peticion('POST', '/api/examenes', datos),
+  editarExamen: (id, datos) => peticion('PUT', `/api/examenes/${id}`, datos),
+  borrarExamen: (id) => peticion('DELETE', `/api/examenes/${id}`),
+
+  planes: () => peticion('GET', '/api/planes'),
+  plan: (id) => peticion('GET', `/api/planes/${id}`),
+  generarPlan: (opciones) => peticion('POST', '/api/planes', opciones),
+  borrarPlan: (id) => peticion('DELETE', `/api/planes/${id}`),
+  marcarActividad: (planId, actividadId, completada) => peticion('PATCH', `/api/planes/${planId}/actividades/${actividadId}`, { completada }),
+  proponerReorganizacion: (planId) => peticion('POST', `/api/planes/${planId}/reorganizar`),
+  aplicarReorganizacion: (planId, dias) => peticion('POST', `/api/planes/${planId}/aplicar`, { dias }),
+
+  cuestionarios: (filtros) => peticion('GET', conFiltros('/api/cuestionarios', filtros)),
+  cuestionario: (id) => peticion('GET', `/api/cuestionarios/${id}`),
+  generarCuestionario: (opciones) => peticion('POST', '/api/cuestionarios', opciones),
+  responderCuestionario: (id, respuestas) => peticion('POST', `/api/cuestionarios/${id}/intentos`, { respuestas }),
+  revisionCuestionario: (id) => peticion('GET', `/api/cuestionarios/${id}/revision`),
+  borrarCuestionario: (id) => peticion('DELETE', `/api/cuestionarios/${id}`),
+
+  tarjetas: (filtros) => peticion('GET', conFiltros('/api/flashcards', filtros)),
+  resumenTarjetas: () => peticion('GET', '/api/flashcards/resumen'),
+  crearTarjeta: (datos) => peticion('POST', '/api/flashcards', datos),
+  generarTarjetas: (datos) => peticion('POST', '/api/flashcards/generar', datos),
+  editarTarjeta: (id, datos) => peticion('PUT', `/api/flashcards/${id}`, datos),
+  repasarTarjeta: (id, calificacion) => peticion('POST', `/api/flashcards/${id}/repaso`, { calificacion }),
+  borrarTarjeta: (id) => peticion('DELETE', `/api/flashcards/${id}`),
 };

@@ -103,6 +103,8 @@ export async function renderApuntes(contenedor, parametros) {
           <div class="editor__acciones">
             <button type="submit" class="boton boton--primario">${iconos.guardar}${a.nuevo ? 'Guardar apunte' : 'Guardar cambios'}</button>
             ${a.nuevo ? '' : `<button type="button" class="boton boton--ia" data-resumir>${iconos.chispa}${a.resumenIa ? 'Volver a resumir' : 'Resumir con IA'}</button>`}
+            ${a.nuevo ? '' : `<a class="boton boton--secundario" href="#/cuestionarios?nuevo=apuntes&apunteIds=${esc(a.id)}">${iconos.cuestionario}Cuestionario</a>
+            <button type="button" class="boton boton--secundario" data-tarjetas>${iconos.tarjetas}Crear tarjetas</button>`}
           </div>
           ${a.nuevo ? '' : `<button type="button" class="boton boton--fantasma" data-borrar style="color:var(--rojo)">${iconos.borrar}Eliminar</button>`}
         </div>
@@ -217,6 +219,20 @@ export async function renderApuntes(contenedor, parametros) {
       } catch (error) {
         detalle.querySelector('[data-resumen]').innerHTML = '';
         mostrarError(cajaError, error);
+      }
+      return;
+    }
+
+    const botonTarjetas = e.target.closest('[data-tarjetas]');
+    if (botonTarjetas) {
+      try {
+        await conCarga(botonTarjetas, async () => {
+          if (cambiosSinGuardar) await guardar(detalle.querySelector('form'));
+          const { tarjetas } = await api.generarTarjetas({ apunteId: actual.id, cantidad: 10 });
+          aviso(`${tarjetas.length} tarjetas creadas. Repásalas en Tarjetas de memoria.`);
+        });
+      } catch (error) {
+        aviso(error.message, 'error');
       }
       return;
     }

@@ -3,12 +3,13 @@ import { api } from '../api.js';
 import { obtenerMaterias, invalidarMaterias } from '../datos.js';
 import { iconos } from '../iconos.js';
 import { aviso, abrirFormulario, confirmar, esqueleto, errorCarga, vacio } from '../ui.js';
-import { esc, colorSeguro, describirEntrega, plural, COLORES_MATERIA } from '../utilidades.js';
+import { esc, colorSeguro, describirEntrega, plural, cuentaRegresiva, COLORES_MATERIA } from '../utilidades.js';
 
 function cuaderno(m) {
-  const abiertas = m.pendientes + m.enProgreso;
+  const pendientes = m.pendientes + m.enProgreso;
   const pct = m.totalTareas ? Math.round((m.completadas / m.totalTareas) * 100) : 0;
   const proxima = m.proximaEntrega ? describirEntrega({ fechaLimite: m.proximaEntrega, estado: 'pendiente' }) : null;
+  const examen = m.proximoExamen;
 
   return `
     <article class="cuaderno" style="--color:${colorSeguro(m.color)}">
@@ -22,22 +23,33 @@ function cuaderno(m) {
           <button type="button" class="boton boton--icono peligro" data-borrar="${esc(m.id)}" aria-label="Eliminar ${esc(m.nombre)}">${iconos.borrar}</button>
         </div>
       </div>
-      <div style="display:grid;gap:.5rem;align-content:start">
+
+      <div style="display:grid;gap:.75rem;align-content:start">
         ${m.descripcion ? `<p class="cuaderno__descripcion">${esc(m.descripcion)}</p>` : ''}
-        <p class="cuaderno__numeros">
-          <span><b>${abiertas}</b> ${abiertas === 1 ? 'abierta' : 'abiertas'}</span>
-          <span><b>${m.completadas}</b> ${m.completadas === 1 ? 'completada' : 'completadas'}</span>
-          ${m.vencidas ? `<span class="vencidas"><b>${m.vencidas}</b> ${m.vencidas === 1 ? 'vencida' : 'vencidas'}</span>` : ''}
-        </p>
-        ${proxima ? `<p class="fecha ${proxima.clase}" style="justify-self:start">Próxima entrega: ${esc(proxima.texto)}</p>` : ''}
+        <dl class="cifras" aria-label="Tareas de ${esc(m.nombre)}">
+          <div><dt>Pendientes</dt><dd>${pendientes}</dd></div>
+          <div class="exito"><dt>Completadas</dt><dd>${m.completadas}</dd></div>
+          <div class="${m.vencidas ? 'alerta-roja' : ''}"><dt>Vencidas</dt><dd>${m.vencidas}</dd></div>
+        </dl>
+        <div style="display:grid;gap:4px;font-size:var(--t-sm);color:var(--grafito-suave)">
+          ${proxima ? `<span>Próxima entrega: <span class="fecha ${proxima.clase}">${esc(proxima.texto)}</span></span>` : '<span>Sin entregas pendientes</span>'}
+          ${examen ? `<span>Próximo examen: <b style="color:var(--rojo)">${esc(examen.titulo)}</b> · ${esc(cuentaRegresiva(examen.fecha))}</span>` : ''}
+          <span>${plural(m.totalApuntes, 'apunte', 'apuntes')} · ${plural(m.totalTarjetas, 'tarjeta de memoria', 'tarjetas de memoria')}</span>
+        </div>
       </div>
+
       <div class="cuaderno__pie">
+        <div style="display:flex;justify-content:space-between;font-size:var(--t-xs);font-weight:700;color:var(--grafito-suave)">
+          <span>Avance de tareas</span><span>${pct}% · ${m.completadas} de ${m.totalTareas}</span>
+        </div>
         <div class="avance" role="progressbar" aria-label="Avance de ${esc(m.nombre)}" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
           <span style="--valor:${pct}%;--color:${colorSeguro(m.color)}"></span>
         </div>
-        <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-          <a href="#/tareas?materiaId=${esc(m.id)}">Ver ${plural(m.totalTareas, 'tarea', 'tareas')}</a>
-          <a href="#/apuntes?materiaId=${esc(m.id)}">Ver apuntes</a>
+        <div style="display:flex;justify-content:space-between;gap:.75rem;flex-wrap:wrap">
+          <a href="#/tareas?materiaId=${esc(m.id)}">Tareas</a>
+          <a href="#/apuntes?materiaId=${esc(m.id)}">Apuntes</a>
+          <a href="#/tarjetas?materiaId=${esc(m.id)}">Tarjetas</a>
+          <a href="#/plan?nuevo=materia&materiaId=${esc(m.id)}">Plan de estudio</a>
         </div>
       </div>
     </article>`;
@@ -48,10 +60,10 @@ function formularioMateria(m = {}) {
   const colores = COLORES_MATERIA.includes(actual) ? COLORES_MATERIA : [...COLORES_MATERIA, actual];
   return `
     <label class="campo"><span>Nombre</span>
-      <input class="entrada" name="nombre" required maxlength="120" value="${esc(m.nombre)}" placeholder="Ej. Desarrollo Web I">
+      <input class="entrada" name="nombre" required maxlength="120" value="${esc(m.nombre)}" placeholder="Ej. Programación I">
     </label>
     <label class="campo"><span>Docente <span class="opcional">(opcional)</span></span>
-      <input class="entrada" name="docente" maxlength="120" value="${esc(m.docente)}" placeholder="Ej. Ing. Guillermo Pisqui">
+      <input class="entrada" name="docente" maxlength="120" value="${esc(m.docente)}" placeholder="Nombre del catedrático">
     </label>
     <label class="campo"><span>Descripción <span class="opcional">(opcional)</span></span>
       <textarea class="area-texto" name="descripcion" rows="2" maxlength="2000" style="min-height:4.5rem">${esc(m.descripcion)}</textarea>

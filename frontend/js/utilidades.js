@@ -111,3 +111,66 @@ export const PRIORIDADES = { alta: 'Alta', media: 'Media', baja: 'Baja' };
 export const COLORES_MATERIA = ['#2563EB', '#7C3AED', '#DB2777', '#DC2626', '#EA580C', '#CA8A04', '#16A34A', '#0D9488', '#0891B2', '#475569'];
 
 export { ZONA };
+
+/* ---------- Fechas de calendario (YYYY-MM-DD) en la hora local ---------- */
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** Date -> 'YYYY-MM-DD' en la hora local del navegador. */
+export const aISO = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+/** 'YYYY-MM-DD' -> Date a las 00:00 locales. */
+export function desdeISO(texto) {
+  const [a, m, d] = String(texto).slice(0, 10).split('-').map(Number);
+  return new Date(a, m - 1, d);
+}
+
+export const hoyISO = () => aISO(new Date());
+
+export function sumarDias(fecha, dias) {
+  const d = new Date(fecha);
+  d.setDate(d.getDate() + dias);
+  return d;
+}
+
+/** Minutos entre dos horas 'HH:MM'. */
+export function minutosEntre(inicio, fin) {
+  const [h1, m1] = inicio.split(':').map(Number);
+  const [h2, m2] = fin.split(':').map(Number);
+  return h2 * 60 + m2 - (h1 * 60 + m1);
+}
+
+export function duracion(minutos) {
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+/** "hoy", "mañana", "en 5 días", "hace 2 días" */
+export function cuentaRegresiva(fecha) {
+  const dias = diasHasta(fecha);
+  if (dias === 0) return 'hoy';
+  if (dias === 1) return 'mañana';
+  if (dias === -1) return 'ayer';
+  return dias > 0 ? `en ${dias} días` : `hace ${-dias} días`;
+}
+
+const fmtDiaCorto = new Intl.DateTimeFormat('es', { weekday: 'short', day: 'numeric', month: 'short' });
+const fmtMesAnio = new Intl.DateTimeFormat('es', { month: 'long', year: 'numeric' });
+const fmtMesCorto = new Intl.DateTimeFormat('es', { month: 'short' });
+
+Object.assign(formato, {
+  diaCorto: (d) => mayuscula(fmtDiaCorto.format(new Date(d)).replace(/\./g, '')),
+  mesAnio: (d) => mayuscula(fmtMesAnio.format(new Date(d))),
+  mesCorto: (d) => fmtMesCorto.format(new Date(d)).replace('.', ''),
+});
+
+export const TIPOS_ACTIVIDAD = {
+  estudio: { nombre: 'Estudio', color: 'var(--c-estudio)' },
+  tarea: { nombre: 'Tarea', color: 'var(--c-tarea)' },
+  repaso: { nombre: 'Repaso', color: 'var(--c-repaso)' },
+  practica: { nombre: 'Práctica', color: 'var(--c-practica)' },
+  descanso: { nombre: 'Descanso', color: 'var(--grafito-tenue)' },
+};
+
+export const DIFICULTADES = { facil: 'Fácil', media: 'Media', dificil: 'Difícil' };
