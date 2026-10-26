@@ -11,15 +11,19 @@ function rutaNoEncontrada(req, _res, next) {
 
 // eslint-disable-next-line no-unused-vars
 function manejadorErrores(err, _req, res, _next) {
-  const esControlado = err instanceof AppError;
-  if (!esControlado) {
-    console.error('[ms-auth] Error no controlado:', err);
+  let error = err instanceof AppError ? err : null;
+  if (!error && err.type === 'entity.parse.failed') {
+    error = new AppError('El cuerpo de la petición no es un JSON válido', 400, 'JSON_INVALIDO');
   }
-  const estado = esControlado ? err.estadoHttp : 500;
-  res.status(estado).json({
+  if (!error) {
+    console.error('[ms-auth] Error no controlado:', err);
+    error = new AppError('Ocurrió un error interno', 500, 'ERROR_INTERNO');
+  }
+  res.status(error.estadoHttp).json({
     error: {
-      codigo: esControlado ? err.codigo : 'ERROR_INTERNO',
-      mensaje: esControlado ? err.message : 'Ocurrió un error interno',
+      codigo: error.codigo,
+      mensaje: error.message,
+      ...(error.detalles ? { detalles: error.detalles } : {}),
     },
   });
 }

@@ -8,6 +8,7 @@ const { config } = require('../config/env');
 const authController = require('../controllers/auth.controller');
 const healthController = require('../controllers/health.controller');
 const verificarToken = require('../middlewares/verificarToken');
+const limiteIntentos = require('../middlewares/limiteIntentos');
 const openapi = require('../docs/openapi');
 
 const router = Router();
@@ -15,6 +16,10 @@ const router = Router();
 // OAuth 2.0 con Google
 router.get('/google', authController.redirigirAGoogle);
 router.get('/google/callback', authController.callbackGoogle);
+
+// Correo y contraseña
+router.post('/registro', authController.registro);
+router.post('/login', limiteIntentos, authController.login);
 
 // Rutas protegidas con JWT
 router.get('/me', verificarToken, authController.perfil);

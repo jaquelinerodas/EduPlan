@@ -8,6 +8,7 @@ const { config } = require('../config/env');
 const googleService = require('../services/google.service');
 const authService = require('../services/auth.service');
 const AppError = require('../utils/AppError');
+const limiteIntentos = require('../middlewares/limiteIntentos');
 
 const COOKIE_STATE = 'oauth_state';
 
@@ -79,9 +80,27 @@ function cerrarSesion(_req, res) {
   res.json({ mensaje: 'Sesión cerrada. El cliente debe eliminar el token.' });
 }
 
+/** POST /auth/registro — crea una cuenta con correo y contraseña. */
+async function registro(req, res) {
+  const resultado = await authService.registrar(req.body);
+  res.status(201).json(resultado);
+}
+
+/** POST /auth/login — inicio de sesión con correo y contraseña. */
+async function login(req, res) {
+  try {
+    const resultado = await authService.iniciarSesionConCorreo(req.body);
+    limiteIntentos.limpiar(req);
+    res.json(resultado);
+  } catch (err) {
+    if (err.codigo === 'CREDENCIALES_INVALIDAS') limiteIntentos.registrarFallo(req);
+    throw err;
+  }
+}
+
 /** GET /auth/prueba — página sencilla para probar el flujo (solo desarrollo). */
 function paginaPrueba(_req, res) {
   res.sendFile(path.join(__dirname, '..', 'public', 'prueba.html'));
 }
 
-module.exports = { redirigirAGoogle, callbackGoogle, perfil, cerrarSesion, paginaPrueba };
+module.exports = { redirigirAGoogle, callbackGoogle, perfil, cerrarSesion, registro, login, paginaPrueba };

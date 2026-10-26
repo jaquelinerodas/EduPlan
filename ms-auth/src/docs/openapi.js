@@ -23,7 +23,7 @@ module.exports = {
     title: 'EduPlan · ms-auth',
     version,
     description:
-      'Microservicio de autenticación y usuarios. Inicio de sesión con Google (OAuth 2.0) ' +
+      'Microservicio de autenticación y usuarios. Inicio de sesión con Google (OAuth 2.0) o con correo y contraseña, ' +
       'y emisión de JSON Web Tokens con expiración.\n\n' +
       '**Cómo obtener un token:** abre `/auth/google` en el navegador, inicia sesión con Google ' +
       'y copia el token que aparece al final del flujo. Luego usa el botón **Authorize**.',
@@ -31,6 +31,7 @@ module.exports = {
   servers: [{ url: '/', description: 'Servidor actual' }],
   tags: [
     { name: 'OAuth 2.0', description: 'Flujo de inicio de sesión con Google' },
+    { name: 'Correo y contraseña', description: 'Registro e inicio de sesión sin Google' },
     { name: 'Sesión', description: 'Rutas protegidas con JWT' },
     { name: 'Monitoreo', description: 'Estado del servicio' },
   ],
@@ -40,6 +41,13 @@ module.exports = {
     },
     schemas: {
       Error: errorSchema,
+      Sesion: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', description: 'JWT con expiración' },
+          usuario: { $ref: '#/components/schemas/Usuario' },
+        },
+      },
       Usuario: {
         type: 'object',
         properties: {
@@ -48,6 +56,7 @@ module.exports = {
           nombre: { type: 'string' },
           fotoUrl: { type: 'string', nullable: true },
           rol: { type: 'string', enum: ['estudiante', 'administrador'] },
+          metodos: { type: 'array', items: { type: 'string', enum: ['google', 'password'] } },
           ultimoAcceso: { type: 'string', format: 'date-time' },
           creadoEn: { type: 'string', format: 'date-time' },
         },
@@ -75,6 +84,45 @@ module.exports = {
           { name: 'state', in: 'query', schema: { type: 'string' } },
         ],
         responses: { 302: { description: 'Redirección al frontend con el token o el error' } },
+      },
+    },
+    '/auth/registro': {
+      post: {
+        tags: ['Correo y contraseña'],
+        summary: 'Crear cuenta con correo y contraseña',
+        description: 'La contraseña se guarda con hash scrypt. Debe tener 8 a 72 caracteres, con al menos una letra y un número.',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['nombre', 'email', 'password'], properties: {
+            nombre: { type: 'string', example: 'Ana López' },
+            email: { type: 'string', format: 'email', example: 'ana@ejemplo.com' },
+            password: { type: 'string', format: 'password', example: 'Estudio2026' },
+          } } } },
+        },
+        responses: {
+          201: { description: 'Cuenta creada', content: { 'application/json': { schema: { $ref: '#/components/schemas/Sesion' } } } },
+          400: { description: 'Datos inválidos', content: { 'application/json': { schema: errorSchema } } },
+          409: { description: 'El correo ya está registrado (EMAIL_REGISTRADO o CUENTA_GOOGLE)', content: { 'application/json': { schema: errorSchema } } },
+        },
+      },
+    },
+    '/auth/login': {
+      post: {
+        tags: ['Correo y contraseña'],
+        summary: 'Iniciar sesión con correo y contraseña',
+        description: 'Máximo 5 intentos fallidos por correo e IP cada 15 minutos.',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: {
+            email: { type: 'string', format: 'email', example: 'demo@eduplan.com' },
+            password: { type: 'string', format: 'password', example: 'Demo2026' },
+          } } } },
+        },
+        responses: {
+          200: { description: 'Sesión iniciada', content: { 'application/json': { schema: { $ref: '#/components/schemas/Sesion' } } } },
+          401: { description: 'Correo o contraseña incorrectos', content: { 'application/json': { schema: errorSchema } } },
+          429: { description: 'Demasiados intentos fallidos', content: { 'application/json': { schema: errorSchema } } },
+        },
       },
     },
     '/auth/me': {

@@ -21,6 +21,8 @@ const tokenService = require('../src/services/token.service');
 const googleService = require('../src/services/google.service');
 const usuarioModel = require('../src/models/usuario.model');
 const { pool } = require('../src/config/db');
+const password = require('../src/utils/password');
+const limiteIntentos = require('../src/middlewares/limiteIntentos');
 
 const USUARIO = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -157,4 +159,71 @@ test('una ruta inexistente responde 404 con formato de error', async () => {
   const r = await pedir('/auth/no-existe');
   assert.equal(r.status, 404);
   assert.equal((await r.json()).error.codigo, 'RUTA_NO_ENCONTRADA');
+});
+
+// ---------- Correo y contraseña ----------
+
+const jsonPost = (ruta, cuerpo) => pedir(ruta, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
+});
+
+test('scrypt: el hash verifica la contraseña correcta y rechaza otra', async () => {
+  const hash = await password.generarHash('Estudio2026');
+  assert.match(hash, /^scrypt\$/);
+  assert.equal(await password.verificar('Estudio2026', hash), true);
+  assert.equal(await password.verificar('estudio2026', hash), false);
+});
+
+test('registro valida nombre, correo y fortaleza de la contraseña', async () => {
+  const r = await jsonPost('/auth/registro', { nombre: 'A', email: 'malo', password: 'corta' });
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).error.detalles.length, 3);
+});
+
+test('registro crea la cuenta y devuelve un JWT', async (t) => {
+  t.mock.method(usuarioModel, 'buscarPorEmail', async () => null);
+  const crear = t.mock.method(usuarioModel, 'crearConPassword', async ({ email, nombre }) => ({ ...USUARIO, email, nombre, tiene_password: true }));
+  const r = await jsonPost('/auth/registro', { nombre: 'Ana López', email: 'ANA@Ejemplo.com ', password: 'Estudio2026' });
+  assert.equal(r.status, 201);
+  const { token, usuario } = await r.json();
+  assert.equal(tokenService.verificarToken(token).sub, USUARIO.id);
+  assert.deepEqual(usuario.metodos, ['password']);
+  const args = crear.mock.calls[0].arguments[0];
+  assert.equal(args.email, 'ana@ejemplo.com');
+  assert.match(args.passwordHash, /^scrypt\$/);
+});
+
+test('registro con un correo de Google responde 409 CUENTA_GOOGLE', async (t) => {
+  t.mock.method(usuarioModel, 'buscarPorEmail', async () => ({ ...USUARIO, tiene_google: true, tiene_password: false }));
+  const r = await jsonPost('/auth/registro', { nombre: 'Ana', email: 'ana@ejemplo.com', password: 'Estudio2026' });
+  assert.equal(r.status, 409);
+  assert.equal((await r.json()).error.codigo, 'CUENTA_GOOGLE');
+});
+
+test('login correcto devuelve un JWT', async (t) => {
+  const hash = await password.generarHash('Estudio2026');
+  t.mock.method(usuarioModel, 'buscarCredenciales', async () => ({ ...USUARIO, password_hash: hash, tiene_password: true }));
+  t.mock.method(usuarioModel, 'registrarAcceso', async () => {});
+  const r = await jsonPost('/auth/login', { email: 'ana.lopez@ejemplo.com', password: 'Estudio2026' });
+  assert.equal(r.status, 200);
+  assert.ok((await r.json()).token);
+});
+
+test('login con contraseña incorrecta o correo inexistente da el mismo error', async (t) => {
+  limiteIntentos.reiniciar();
+  const hash = await password.generarHash('Estudio2026');
+  t.mock.method(usuarioModel, 'buscarCredenciales', async (email) => (email === 'ana@ejemplo.com' ? { ...USUARIO, password_hash: hash } : null));
+  const a = await jsonPost('/auth/login', { email: 'ana@ejemplo.com', password: 'Otra2026x' });
+  const b = await jsonPost('/auth/login', { email: 'nadie@ejemplo.com', password: 'Otra2026x' });
+  assert.equal(a.status, 401);
+  assert.deepEqual(await a.json(), await b.json());
+});
+
+test('login bloquea después de 5 intentos fallidos (429)', async (t) => {
+  limiteIntentos.reiniciar();
+  t.mock.method(usuarioModel, 'buscarCredenciales', async () => null);
+  let r;
+  for (let i = 0; i < 6; i++) r = await jsonPost('/auth/login', { email: 'x@ejemplo.com', password: 'Mala2026' });
+  assert.equal(r.status, 429);
+  assert.equal((await r.json()).error.codigo, 'DEMASIADOS_INTENTOS');
 });
