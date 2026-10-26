@@ -10,7 +10,13 @@ const SELECT_MATERIA = `
          r.en_progreso::int  AS "enProgreso",
          r.completadas::int  AS "completadas",
          r.vencidas::int     AS "vencidas",
-         r.proxima_entrega   AS "proximaEntrega"
+         r.proxima_entrega   AS "proximaEntrega",
+         (SELECT COUNT(*)::int FROM academico.apuntes a WHERE a.materia_id = m.id)    AS "totalApuntes",
+         (SELECT COUNT(*)::int FROM academico.flashcards f WHERE f.materia_id = m.id) AS "totalTarjetas",
+         (SELECT json_build_object('id', e.id, 'titulo', e.titulo, 'fecha', e.fecha)
+            FROM academico.examenes e
+           WHERE e.materia_id = m.id AND e.fecha >= NOW()
+           ORDER BY e.fecha LIMIT 1)                                                   AS "proximoExamen"
     FROM academico.materias m
     JOIN academico.v_resumen_materias r ON r.materia_id = m.id`;
 

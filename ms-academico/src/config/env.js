@@ -23,7 +23,7 @@ const config = {
     proveedor,
     modelo: process.env.AI_MODEL || MODELOS_POR_DEFECTO[proveedor],
     apiKey: process.env.AI_API_KEY,
-    timeoutMs: Number(process.env.AI_TIMEOUT_MS) || 30000,
+    timeoutMs: Number(process.env.AI_TIMEOUT_MS) || 90000,
     limitePorMinuto: Number(process.env.AI_RATE_LIMIT) || 10,
   },
 };

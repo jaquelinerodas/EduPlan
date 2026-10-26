@@ -45,14 +45,24 @@ function crear(usuarioId, cuerpo) {
   return tareaModel.crear(usuarioId, validar(cuerpo, ESQUEMA));
 }
 
+const bloqueada = () =>
+  new AppError('La tarea ya está completada y no se puede modificar', 409, 'TAREA_COMPLETADA');
+
+/**
+ * Una tarea completada queda bloqueada: no se puede editar ni reabrir.
+ * La base de datos también lo impide con un trigger (defensa en profundidad).
+ */
 async function actualizar(usuarioId, id, cuerpo) {
   const datos = validar(cuerpo, ESQUEMA, { parcial: true });
-  const tarea = await tareaModel.actualizar(validarId(id), usuarioId, datos);
+  const actual = await tareaModel.obtener(validarId(id), usuarioId);
+  if (!actual) throw noEncontrada();
+  if (actual.estado === 'completada') throw bloqueada();
+  const tarea = await tareaModel.actualizar(actual.id, usuarioId, datos);
   if (!tarea) throw noEncontrada();
   return tarea;
 }
 
-/** HU04: marcar como completada (o regresarla a pendiente/en progreso). */
+/** HU04: cambiar estado (pendiente → en progreso → completada). Completar es definitivo. */
 function cambiarEstado(usuarioId, id, cuerpo) {
   const { estado } = validar(cuerpo, { estado: { tipo: 'enum', valores: ESTADOS, requerido: true } });
   return actualizar(usuarioId, id, { estado });

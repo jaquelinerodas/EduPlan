@@ -7,6 +7,7 @@ const swaggerUi = require('swagger-ui-express');
 const verificarToken = require('../middlewares/verificarToken');
 const general = require('../controllers/general.controller');
 const openapi = require('../docs/openapi');
+const estudio = require('./estudio.routes');
 
 const router = Router();
 
@@ -21,9 +22,15 @@ router.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi, {
 // A partir de aquí todo exige JWT (RF02)
 router.use(verificarToken);
 router.get('/resumen', general.resumen);
+router.get('/alertas', general.alertas);
+router.get('/calendario', general.calendario);
 router.use('/materias', require('./materias.routes'));
 router.use('/tareas', require('./tareas.routes'));
 router.use('/apuntes', require('./apuntes.routes'));
 router.use('/ia', require('./ia.routes'));
+router.use('/examenes', estudio.examenes);
+router.use('/planes', estudio.planes);
+router.use('/cuestionarios', estudio.cuestionarios);
+router.use('/flashcards', estudio.tarjetas);
 
 module.exports = router;

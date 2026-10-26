@@ -89,16 +89,17 @@ async function eliminar(id, usuarioId) {
 }
 
 /** RF08: tareas no completadas que vencen dentro de los próximos "dias" (incluye vencidas). */
-async function pendientesParaPlan(usuarioId, dias) {
+async function pendientesParaPlan(usuarioId, dias, materiaId = null) {
   const { rows } = await db.query(
     `${SELECT_TAREA}
       WHERE t.usuario_id = $1
         AND t.estado <> 'completada'
         AND t.fecha_limite < CURRENT_DATE + $2::int + 1
+        AND ($3::uuid IS NULL OR t.materia_id = $3)
       ORDER BY t.fecha_limite ASC,
                CASE t.prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END
       LIMIT 40`,
-    [usuarioId, dias]
+    [usuarioId, dias, materiaId]
   );
   return rows;
 }

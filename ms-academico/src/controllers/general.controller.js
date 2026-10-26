@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const resumenModel = require('../models/resumen.model');
+const agendaService = require('../services/agenda.service');
 const { config } = require('../config/env');
 const { version } = require('../../package.json');
 
@@ -36,4 +37,14 @@ async function resumen(req, res) {
   res.json({ resumen: await resumenModel.estadisticas(req.usuario.id) });
 }
 
-module.exports = { health, resumen };
+/** GET /api/alertas: recordatorios calculados al momento. */
+async function alertas(req, res) {
+  res.json({ alertas: await agendaService.alertas(req.usuario.id) });
+}
+
+/** GET /api/calendario?desde=YYYY-MM-DD&hasta=YYYY-MM-DD */
+async function calendario(req, res) {
+  res.json({ eventos: await agendaService.calendario(req.usuario.id, req.query) });
+}
+
+module.exports = { health, resumen, alertas, calendario };
