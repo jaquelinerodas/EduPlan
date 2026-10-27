@@ -9,7 +9,8 @@ const app = express();
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
-app.use(helmet({ contentSecurityPolicy: false }));
+// HSTS lo decide Nginx (solo con dominio real); en localhost afectaría a otros proyectos
+app.use(helmet({ contentSecurityPolicy: false, strictTransportSecurity: false }));
 app.use(express.json({ limit: '200kb' }));
 if (config.entorno !== 'test') {
   app.use(morgan(config.esProduccion ? 'combined' : 'dev'));

@@ -17,7 +17,8 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 // Encabezados de seguridad. La CSP la define Nginx para todo el sitio.
-app.use(helmet({ contentSecurityPolicy: false }));
+// HSTS lo decide Nginx (solo con dominio real); en localhost afectaría a otros proyectos
+app.use(helmet({ contentSecurityPolicy: false, strictTransportSecurity: false }));
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 if (config.entorno !== 'test') {
