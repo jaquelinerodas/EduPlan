@@ -1,4 +1,7 @@
-
+/**
+ * EduPlan · Punto de entrada del frontend (SPA con rutas por hash: #/panel, #/tareas...).
+ * Las rutas pueden tener un id: #/cuestionarios/<id>
+ */
 import { datosSesion, leerRetornoDeGoogle, cerrarSesion, programarExpiracion, estaCerrando } from './sesion.js';
 import { api } from './api.js';
 import { iconos, logotipo } from './iconos.js';
@@ -144,7 +147,7 @@ async function navegar() {
   anterior.replaceWith(contenedor);
   contenedor.focus({ preventScroll: true });
   window.scrollTo(0, 0);
-  limpiarVista = (await definicion.render(contenedor, { ...parametros, id }, usuario)) || null;
+  limpiarVista = (await definicion.render(contenedor, { ...parametros, id: id ?? parametros.id ?? null }, usuario)) || null;
   actualizarAlertas();
 }
 

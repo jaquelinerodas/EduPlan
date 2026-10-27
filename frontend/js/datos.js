@@ -13,3 +13,19 @@ export async function obtenerMaterias({ forzar = false } = {}) {
 export function invalidarMaterias() {
   materias = null;
 }
+
+/* Semestres, bloques y carpetas */
+let periodos = null;
+
+export async function obtenerPeriodos({ forzar = false } = {}) {
+  if (!periodos || forzar) {
+    periodos = (await api.periodos()).periodos;
+  }
+  return periodos;
+}
+
+export function invalidarPeriodos() {
+  periodos = null;
+}
+
+export const TIPOS_PERIODO = { semestre: 'Semestre', bloque: 'Bloque', carpeta: 'Carpeta' };

@@ -11,11 +11,11 @@ Aplicación de una sola página (SPA) en **HTML, CSS y JavaScript puro**, con m�
 | `#/calendario` | Mes, semana o día con tareas, exámenes y sesiones de estudio |
 | `#/tareas` | Filtros (RF06) y completar con confirmación; una tarea completada queda bloqueada |
 | `#/examenes` | Exámenes con cuenta regresiva, temas, plan de preparación y práctica |
-| `#/materias` | Pendientes, completadas, vencidas, avance, próximo examen, apuntes y tarjetas |
-| `#/apuntes` | Editor con resumen de IA y accesos para crear cuestionario o tarjetas |
-| `#/plan` | Planes por día, avance, reorganización con vista previa e historial |
-| `#/cuestionarios` · `#/cuestionarios/<id>` | Lista, resolver pregunta por pregunta y revisión con explicaciones |
-| `#/tarjetas` · `#/tarjetas?repaso=1` | Mazos por materia y repaso con tarjeta que se voltea (teclas: espacio, 1, 2, 3) |
+| `#/materias` | Agrupadas por semestre o bloque: pendientes, completadas, vencidas, avance, próximo examen, apuntes y tarjetas |
+| `#/apuntes` · `#/apuntes?id=<id>` | Panel de organización (semestre → materia, vistas Recientes/Favoritos/Por repasar, búsqueda, etiquetas), lectura con formato y bloques de código, edición, resumen de IA |
+| `#/plan` | Asistente de 3 pasos con vista previa editable, planes por día, avance, reorganización e historial |
+| `#/cuestionarios` · `#/cuestionarios/<id>` | Generar eligiendo temas, resolver y revisar; después: temas fallados, apuntes recomendados, tarjetas de falladas, sesión de repaso y comparación |
+| `#/tarjetas` · `#/tarjetas?repaso=1` | Mazos por materia, nueva tarjeta (a mano o desde un apunte) y repaso con Atrás/Siguiente (teclas: espacio, 1, 2, 3, ← →) |
 | `#/estado` | Estado de los servicios (solo administradores) |
 
 La campana muestra las **alertas** (`/api/alertas`). Con permiso del usuario también se envían notificaciones del navegador para los avisos importantes cuando EduPlan está en otra pestaña.
@@ -49,7 +49,8 @@ frontend/
 │   ├── layout.css          # Pantalla de inicio de sesión y marco de la app (lateral, barra móvil)
 │   ├── componentes.css     # Botones, formularios, etiquetas, renglones, modales, avisos
 │   ├── vistas.css          # Panel, materias, apuntes, estado
-│   └── estudio.css         # Acceso, alertas, calendario, exámenes, plan por días, cuestionarios y tarjetas
+│   ├── estudio.css         # Acceso, alertas, calendario, exámenes, plan por días, cuestionarios y tarjetas
+│   └── organizacion.css    # Apuntes organizados, selector de temas, asistente de planes y acciones de cuestionarios
 ├── js/
 │   ├── app.js              # Arranque, navegación agrupada y enrutador por hash (#/panel, #/cuestionarios/<id>...)
 │   ├── alertas.js          # Campana de avisos y notificaciones del navegador
@@ -57,7 +58,8 @@ frontend/
 │   ├── api.js              # Cliente de la API (agrega Authorization: Bearer <JWT>)
 │   ├── datos.js            # Caché de materias
 │   ├── ui.js               # Avisos, ventanas modales, confirmaciones y estados de carga
-│   ├── markdown.js         # Convierte el texto de la IA a HTML seguro
+│   ├── markdown.js         # Convierte el texto de la IA y de los apuntes a HTML seguro (con bloques de código)
+│   ├── seleccion.js        # Selector de temas por semestre y resumen de lo que usará la IA
 │   ├── utilidades.js       # Escape de HTML, formato de fechas y textos
 │   ├── iconos.js           # Iconos SVG y logotipo
 │   └── vistas/             # entrar · panel · calendario · tareas · examenes · materias · apuntes

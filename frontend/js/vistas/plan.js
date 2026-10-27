@@ -7,9 +7,10 @@ import { api } from '../api.js';
 import { obtenerMaterias } from '../datos.js';
 import { iconos } from '../iconos.js';
 import { markdownAHtml } from '../markdown.js';
-import { aviso, abrirFormulario, confirmar, conCarga, esqueleto, errorCarga, vacio, mostrarError } from '../ui.js';
+import { aviso, confirmar, conCarga, esqueleto, errorCarga, vacio, mostrarError } from '../ui.js';
+import { montarSelectorTemas, resumenContexto } from '../seleccion.js';
 import {
-  esc, colorSeguro, formato, desdeISO, hoyISO, minutosEntre, duracion, plural, TIPOS_ACTIVIDAD,
+  esc, colorSeguro, formato, desdeISO, hoyISO, minutosEntre, duracion, plural, diasHasta, TIPOS_ACTIVIDAD,
 } from '../utilidades.js';
 
 const ALCANCES = {
@@ -17,6 +18,20 @@ const ALCANCES = {
   materia: 'Una materia',
   apuntes: 'Temas de mis apuntes',
   examen: 'Un examen',
+  cuestionario: 'Repaso de cuestionario',
+};
+
+const OBJETIVOS = [
+  { valor: 'general', titulo: 'Mis tareas', texto: 'Pendientes y entregas', icono: iconos.lista },
+  { valor: 'materia', titulo: 'Una materia', texto: 'Semestre y temas específicos', icono: iconos.libro },
+  { valor: 'apuntes', titulo: 'Mis apuntes', texto: 'Repasar temas elegidos', icono: iconos.apuntes },
+  { valor: 'examen', titulo: 'Un examen', texto: 'Preparación con temas', icono: iconos.examen },
+];
+const PRIORIDADES = { baja: 'Baja', media: 'Media', alta: 'Alta' };
+const DESCRIPCION_PRIORIDAD = {
+  baja: 'Ritmo ligero, sin saturarte.',
+  media: 'Equilibrio entre estudio, práctica y repaso.',
+  alta: 'Ritmo intenso: más práctica y más temas por día.',
 };
 
 const rangoTexto = (p) =>
@@ -97,7 +112,9 @@ function planHtml(p) {
               <span>${esc(chipAlcance(p))}</span><span aria-hidden="true">·</span>
               <span>${esc(rangoTexto(p))}</span>
               ${p.horasPorDia ? `<span aria-hidden="true">·</span><span>${plural(p.horasPorDia, 'hora', 'horas')} al día</span>` : ''}
+              ${p.prioridad && p.prioridad !== 'media' ? `<span aria-hidden="true">·</span><span>Prioridad ${esc(PRIORIDADES[p.prioridad].toLowerCase())}</span>` : ''}
             </p>
+            ${p.temasPrioridad ? `<p class="plan-cabeza__prioriza">${iconos.objetivo}Prioriza: ${esc(p.temasPrioridad)}</p>` : ''}
           </div>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             ${legado ? '' : `<button type="button" class="boton boton--secundario" data-reorganizar>${iconos.reorganizar}Reorganizar</button>`}
@@ -123,58 +140,110 @@ function planHtml(p) {
     <p class="firma-ia">${iconos.chispa}Generado por IA el ${esc(formato.fechaHora(p.creadoEn))}${p.modeloIa ? ` · ${esc(p.modeloIa)}` : ''}</p>`;
 }
 
-/* ---------- Formulario para crear un plan ---------- */
-function formularioPlan({ materias, apuntes, examenes }, inicial) {
-  const porMateria = new Map();
+/* ---------- Asistente para crear un plan (3 pasos + vista previa) ---------- */
+function pasoObjetivo({ materias, apuntes, examenes }, inicial) {
+  const grupos = new Map();
   for (const a of apuntes) {
-    if (!porMateria.has(a.materia)) porMateria.set(a.materia, []);
-    porMateria.get(a.materia).push(a);
+    const clave = `${a.materia}${a.periodo ? ` · ${a.periodo}` : ''}`;
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(a);
   }
-  const seleccionados = new Set(String(inicial.apunteIds || '').split(',').filter(Boolean));
+  const elegidos = new Set(String(inicial.apunteIds || '').split(',').filter(Boolean));
   return `
-    <fieldset class="campo" style="border:0;padding:0;margin:0">
-      <legend>¿Sobre qué quieres estudiar?</legend>
-      <div class="segmentos segmentos--bloque" style="margin-top:6px">
-        ${Object.entries(ALCANCES).map(([k, v]) => `<label><input type="radio" name="alcance" value="${k}"${k === inicial.alcance ? ' checked' : ''}><span>${v}</span></label>`).join('')}
-      </div>
-    </fieldset>
+    <h3 class="asistente__pregunta">¿Qué quieres estudiar?</h3>
+    <div class="objetivos" role="radiogroup" aria-label="Objetivo del plan">
+      ${OBJETIVOS.map((o) => `
+        <label class="objetivo">
+          <input type="radio" name="alcance" value="${o.valor}"${o.valor === inicial.alcance ? ' checked' : ''}>
+          <span class="objetivo__caja">${o.icono}<b>${o.titulo}</b><small>${o.texto}</small><span class="objetivo__check">${iconos.ok}</span></span>
+        </label>`).join('')}
+    </div>
 
+    <div data-si="general"><div data-contexto-general></div></div>
     <div data-si="materia">
       <label class="campo"><span>Materia</span>
-        <select class="selector" name="materiaId">${materias.map((m) => `<option value="${esc(m.id)}"${m.id === inicial.materiaId ? ' selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
-    </div>
-    <div data-si="apuntes">
-      <div class="campo"><span>Temas (elige hasta 10 apuntes)</span>
-        ${apuntes.length ? `<div class="lista-seleccion">${[...porMateria].map(([materia, lista]) => `
-          <p class="lista-seleccion__grupo">${esc(materia)}</p>
-          ${lista.map((a) => `<label><input type="checkbox" name="apunteIds" value="${esc(a.id)}"${seleccionados.has(a.id) ? ' checked' : ''}>${esc(a.titulo)}</label>`).join('')}`).join('')}
-        </div>` : '<p class="acceso__ayuda">Aún no tienes apuntes. <a href="#/apuntes">Escribe uno</a>.</p>'}
-      </div>
+        <select class="selector" name="materiaId">${materias.map((m) => `<option value="${esc(m.id)}"${m.id === inicial.materiaId ? ' selected' : ''}>${esc(m.nombre)}${m.periodo ? ` · ${esc(m.periodo)}` : ''}</option>`).join('')}</select></label>
     </div>
     <div data-si="examen">
       <label class="campo"><span>Examen</span>
         ${examenes.length
-          ? `<select class="selector" name="examenId">${examenes.map((e) => `<option value="${esc(e.id)}"${e.id === inicial.examenId ? ' selected' : ''}>${esc(e.titulo)} · ${esc(e.materia)} · ${esc(formato.diaCorto(e.fecha))}</option>`).join('')}</select>`
+          ? `<select class="selector" name="examenId">${examenes.map((e) => `<option value="${esc(e.id)}" data-fecha="${esc(e.fecha)}"${e.id === inicial.examenId ? ' selected' : ''}>${esc(e.titulo)} · ${esc(e.materia)} · ${esc(formato.diaCorto(e.fecha))}</option>`).join('')}</select>`
           : '<p class="acceso__ayuda">No tienes exámenes próximos. <a href="#/examenes">Registra uno</a>.</p>'}
       </label>
-      <p class="acceso__ayuda">El plan termina el día antes del examen y da más tiempo a los temas que fallaste en tus cuestionarios.</p>
     </div>
-
-    <div class="formulario__fila">
-      <label class="campo"><span>Días a planificar</span>
-        <select class="selector" name="dias">${[3, 5, 7, 14, 21, 30].map((d) => `<option value="${d}"${d === 7 ? ' selected' : ''}>${d} días</option>`).join('')}</select></label>
-      <label class="campo"><span>Horas de estudio al día</span>
-        <select class="selector" name="horasPorDia">${[1, 2, 3, 4, 5, 6].map((h) => `<option value="${h}"${h === 2 ? ' selected' : ''}>${plural(h, 'hora', 'horas')}</option>`).join('')}</select></label>
-      <label class="campo"><span>Empiezo a estudiar a las</span>
-        <input class="entrada" type="time" name="horaInicio" value="18:00" required></label>
+    <div data-si="apuntes">
+      <div class="campo"><span>Temas (elige hasta 15 apuntes)</span>
+        ${apuntes.length ? `<div class="lista-seleccion">${[...grupos].map(([grupo, lista]) => `
+          <p class="lista-seleccion__grupo">${esc(grupo)}</p>
+          ${lista.map((a) => `<label><input type="checkbox" name="apunteIdsLibres" value="${esc(a.id)}"${elegidos.has(a.id) ? ' checked' : ''}>${esc(a.titulo)}</label>`).join('')}`).join('')}
+        </div>` : '<p class="acceso__ayuda">Aún no tienes apuntes. <a href="#/apuntes">Escribe uno</a>.</p>'}
+      </div>
     </div>
-    <label class="casilla"><input type="checkbox" name="finesDeSemana" checked>Incluir sábado y domingo</label>
-    <p class="acceso__ayuda">${iconos.chispa.replace('<svg', '<svg style="width:14px;height:14px;display:inline;vertical-align:-2px"')} El asistente puede tardar hasta un minuto en organizar tu plan.</p>`;
+    <div data-zona-temas></div>
+    <div data-si-varios="materia examen">
+      <label class="campo"><span>Temas que quieres priorizar <span class="opcional">(opcional)</span></span>
+        <textarea class="area-texto" name="temasPrioridad" maxlength="500" style="min-height:3.5rem" placeholder="Ej. Procedimientos almacenados, triggers y transacciones"></textarea></label>
+    </div>
+    <fieldset class="campo prioridad" style="border:0;padding:0;margin:0">
+      <legend>Nivel de prioridad</legend>
+      <div class="radios-linea">
+        ${Object.entries(PRIORIDADES).map(([k, v]) => `<label><input type="radio" name="prioridad" value="${k}"${k === 'media' ? ' checked' : ''}>${v}</label>`).join('')}
+      </div>
+      <small data-descripcion-prioridad>${DESCRIPCION_PRIORIDAD.media}</small>
+    </fieldset>`;
 }
 
-function alternarCampos(form) {
-  const alcance = form.querySelector('[name="alcance"]:checked').value;
-  form.querySelectorAll('[data-si]').forEach((el) => { el.hidden = el.dataset.si !== alcance; });
+function pasoDisponibilidad() {
+  return `
+    <h3 class="asistente__pregunta">¿Cuánto tiempo tienes?</h3>
+    <div class="formulario__fila">
+      <label class="campo"><span>Días a planificar</span>
+        <select class="selector" name="dias">${[3, 5, 7, 10, 14, 21, 30].map((d) => `<option value="${d}"${d === 7 ? ' selected' : ''}>${d} días</option>`).join('')}</select></label>
+      <label class="campo"><span>Horas de estudio al día</span>
+        <select class="selector" name="horasPorDia">${[1, 2, 3, 4, 5, 6].map((h) => `<option value="${h}"${h === 2 ? ' selected' : ''}>${plural(h, 'hora', 'horas')}</option>`).join('')}</select></label>
+    </div>
+    <p class="acceso__ayuda" data-aviso-examen hidden></p>
+    <div class="formulario__fila">
+      <label class="campo"><span>Empiezo a estudiar a las</span>
+        <input class="entrada" type="time" name="horaInicio" value="18:00" required></label>
+      <div class="campo"><span>Fines de semana</span>
+        <label class="casilla" style="min-height:44px"><input type="checkbox" name="finesDeSemana" checked>Incluir sábado y domingo</label></div>
+    </div>
+    <div class="consejo-disponibilidad">${iconos.reloj}<p>Se agregan descansos cortos entre bloques de 25 a 60 minutos. Puedes ajustar cada actividad en la vista previa.</p></div>`;
+}
+
+/** Vista previa editable: el estudiante puede cambiar horarios y títulos o quitar actividades. */
+function vistaPreviaHtml(propuesta) {
+  return `
+    <label class="campo"><span>Título del plan</span>
+      <input class="entrada" name="tituloPlan" maxlength="200" value="${esc(propuesta.titulo)}"></label>
+    <p class="vista-previa__resumen">${esc(propuesta.resumen)}</p>
+    <div class="dias dias--previa">${propuesta.dias.map((d, i) => {
+      const minutos = d.actividades.filter((a) => a.tipo !== 'descanso').reduce((s, a) => s + minutosEntre(a.inicio, a.fin), 0);
+      return `
+      <article class="dia-plan">
+        <div class="dia-plan__cabeza">
+          <h3>${d.fecha === hoyISO() ? 'Hoy · ' : ''}${esc(formato.diaCorto(desdeISO(d.fecha)))}</h3>
+          <small>${esc(duracion(minutos))}</small>
+        </div>
+        <ol>${d.actividades.map((a, j) => {
+          const tipo = TIPOS_ACTIVIDAD[a.tipo] || TIPOS_ACTIVIDAD.estudio;
+          return `
+          <li class="actividad-editable${a.tipo === 'descanso' ? ' actividad-editable--descanso' : ''}" style="--c:${tipo.color}" data-dia="${i}" data-act="${j}">
+            <div class="actividad-editable__horas">
+              <input type="time" value="${esc(a.inicio)}" data-campo="inicio" aria-label="Inicio">
+              <span>–</span>
+              <input type="time" value="${esc(a.fin)}" data-campo="fin" aria-label="Fin">
+            </div>
+            <span class="etiqueta-tipo" style="--c:${tipo.color}">${esc(tipo.nombre)}</span>
+            <input class="actividad-editable__titulo" value="${esc(a.titulo)}" data-campo="titulo" maxlength="200" aria-label="Título de la actividad">
+            <button type="button" class="boton boton--icono peligro" data-quitar aria-label="Quitar actividad">${iconos.cerrar}</button>
+            ${a.descripcion ? `<small class="actividad-editable__desc">${esc(a.descripcion)}</small>` : ''}
+          </li>`;
+        }).join('')}</ol>
+      </article>`;
+    }).join('')}</div>
+    ${propuesta.consejos?.length ? `<section class="consejos"><h3>Consejos del asistente</h3><ul>${propuesta.consejos.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></section>` : ''}`;
 }
 
 /* ---------- Vista ---------- */
@@ -268,30 +337,259 @@ export async function renderPlan(contenedor, parametros) {
       aviso(error.message, 'error');
       return;
     }
-    abrirFormulario({
-      titulo: 'Nuevo plan de estudio',
-      textoEnviar: 'Generar plan',
-      contenido: formularioPlan(datos, { alcance: 'general', ...inicial }),
-      alAbrir: (form) => {
-        alternarCampos(form);
-        form.addEventListener('change', (e) => { if (e.target.name === 'alcance') alternarCampos(form); });
-      },
-      alEnviar: async (f, form) => {
-        const cuerpo = {
-          alcance: f.alcance,
-          dias: Number(f.dias),
-          horasPorDia: Number(f.horasPorDia),
-          horaInicio: f.horaInicio,
-          finesDeSemana: form.querySelector('[name="finesDeSemana"]').checked,
-        };
-        if (f.alcance === 'materia') cuerpo.materiaId = f.materiaId;
-        if (f.alcance === 'examen') cuerpo.examenId = f.examenId;
-        if (f.alcance === 'apuntes') cuerpo.apunteIds = new FormData(form).getAll('apunteIds');
-        const { plan } = await api.generarPlan(cuerpo);
-        aviso('Plan de estudio listo');
-        await cargar(plan.id);
-      },
+
+    const PASOS = ['Objetivo', 'Disponibilidad', 'Confirmación'];
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'modal modal--asistente';
+    dialogo.setAttribute('aria-labelledby', 'asistente-titulo');
+    dialogo.innerHTML = `
+      <form class="formulario" novalidate>
+        <div class="modal__encabezado asistente__cabeza">
+          <div>
+            <h2 id="asistente-titulo">Nuevo plan de estudio</h2>
+            <p>Configura un plan adaptado a tus objetivos.</p>
+          </div>
+          <button type="button" class="boton boton--icono" data-cerrar aria-label="Cerrar">${iconos.cerrar}</button>
+        </div>
+        <ol class="pasos" data-pasos>${PASOS.map((p, i) => `<li data-paso-indicador="${i}"><span></span>${i + 1}. ${p}</li>`).join('')}</ol>
+        <div class="modal__cuerpo">
+          <div class="formulario__error" role="alert" hidden></div>
+          <section data-paso="0">${pasoObjetivo(datos, { alcance: 'general', ...inicial })}</section>
+          <section data-paso="1" hidden>${pasoDisponibilidad()}</section>
+          <section data-paso="2" hidden><div data-confirmacion></div></section>
+          <section data-paso="3" hidden><div data-vista-previa></div></section>
+        </div>
+        <div class="modal__pie asistente__pie">
+          <button type="button" class="boton boton--fantasma" data-anterior>${iconos.atras}Anterior</button>
+          <span class="asistente__espacio"></span>
+          <button type="button" class="boton boton--secundario" data-regenerar hidden>${iconos.reorganizar}Volver a generar</button>
+          <button type="button" class="boton boton--primario" data-continuar>Continuar${iconos.adelante}</button>
+        </div>
+      </form>`;
+    document.body.append(dialogo);
+
+    const form = dialogo.querySelector('form');
+    const cajaError = dialogo.querySelector('.formulario__error');
+    const btnAnterior = dialogo.querySelector('[data-anterior]');
+    const btnContinuar = dialogo.querySelector('[data-continuar]');
+    const btnRegenerar = dialogo.querySelector('[data-regenerar]');
+    let paso = 0;
+    let selector = null;
+    let peticion = 0;
+    let propuesta = null;
+    let opcionesEnviadas = null;
+    let ocupado = false;
+
+    const alcance = () => form.querySelector('[name="alcance"]:checked').value;
+    const examenElegido = () => datos.examenes.find((e) => e.id === form.examenId?.value);
+
+    async function cargarTemas() {
+      const a = alcance();
+      const zona = form.querySelector('[data-zona-temas]');
+      selector = null;
+      const filtro = a === 'materia' ? { materiaId: form.materiaId.value } : a === 'examen' && form.examenId ? { examenId: form.examenId.value } : null;
+      if (!filtro) {
+        zona.innerHTML = '';
+        if (a === 'general') {
+          const cont = form.querySelector('[data-contexto-general]');
+          cont.innerHTML = esqueleto(2);
+          try {
+            const { contexto } = await api.contexto({ dias: 14 });
+            cont.innerHTML = contexto.tareasPendientes.length
+              ? resumenContexto(contexto)
+              : '<p class="acceso__ayuda">No tienes tareas pendientes en las próximas dos semanas. Elige una materia, tus apuntes o un examen.</p>';
+          } catch { cont.innerHTML = ''; }
+        }
+        return;
+      }
+      const mia = ++peticion;
+      try {
+        const sel = await montarSelectorTemas(zona, filtro, { seleccion: inicial.apunteIds ? String(inicial.apunteIds).split(',') : null });
+        if (mia === peticion) selector = sel;
+      } catch (error) {
+        zona.innerHTML = `<p class="formulario__error">${esc(error.message)}</p>`;
+      }
+    }
+
+    function alternar() {
+      const a = alcance();
+      form.querySelectorAll('[data-si]').forEach((el) => { el.hidden = el.dataset.si !== a; });
+      form.querySelectorAll('[data-si-varios]').forEach((el) => { el.hidden = !el.dataset.siVarios.split(' ').includes(a); });
+      cargarTemas();
+    }
+
+    function ajustarDiasExamen() {
+      const aviso_ = form.querySelector('[data-aviso-examen]');
+      const e = alcance() === 'examen' ? examenElegido() : null;
+      aviso_.hidden = !e;
+      if (!e) return;
+      const faltan = Math.max(1, diasHasta(e.fecha));
+      aviso_.textContent = `El examen es ${faltan === 1 ? 'mañana' : `en ${faltan} días`}: el plan terminará el día anterior.`;
+      const opcion = [...form.dias.options].map((o) => Number(o.value)).filter((d) => d <= faltan).pop() || 3;
+      form.dias.value = String(Math.min(opcion, 30));
+    }
+
+    /** Arma el cuerpo de la petición; lanza un error si falta algo. */
+    function cuerpo() {
+      const a = alcance();
+      const c = {
+        alcance: a,
+        dias: Number(form.dias.value),
+        horasPorDia: Number(form.horasPorDia.value),
+        horaInicio: form.horaInicio.value || '18:00',
+        finesDeSemana: form.finesDeSemana.checked,
+        prioridad: form.querySelector('[name="prioridad"]:checked').value,
+      };
+      if (a === 'materia' || a === 'examen') {
+        if (a === 'examen' && !form.examenId) throw new Error('Primero registra un examen.');
+        if (!selector) throw new Error('Espera a que carguen los temas.');
+        Object.assign(c, selector.cuerpo());
+        if (a === 'materia') c.materiaId = form.materiaId.value;
+        if (a === 'examen') c.examenId = form.examenId.value;
+        if (form.temasPrioridad.value.trim()) c.temasPrioridad = form.temasPrioridad.value.trim();
+      }
+      if (a === 'apuntes') {
+        c.apunteIds = [...form.querySelectorAll('[name="apunteIdsLibres"]:checked')].map((x) => x.value);
+        if (!c.apunteIds.length) throw new Error('Elige al menos un apunte.');
+        if (c.apunteIds.length > 15) throw new Error('Puedes elegir hasta 15 apuntes a la vez.');
+      }
+      return c;
+    }
+
+    function confirmacionHtml(c) {
+      const a = c.alcance;
+      const m = datos.materias.find((x) => x.id === c.materiaId);
+      const e = datos.examenes.find((x) => x.id === c.examenId);
+      const objetivo = a === 'general' ? 'Todas mis tareas pendientes'
+        : a === 'materia' ? `Una materia: ${m?.nombre}`
+          : a === 'examen' ? `Preparar ${e?.titulo} (${e?.materia})`
+            : `${plural(c.apunteIds.length, 'apunte', 'apuntes')} elegidos`;
+      const filas = [
+        ['Objetivo', objetivo],
+        ...(selector && (a === 'materia' || a === 'examen') ? [['Apuntes', plural(selector.apunteIds().length, 'apunte', 'apuntes')]] : []),
+        ...(c.temas ? [['Temas del examen', c.temas.join(', ')]] : []),
+        ...(c.temasPrioridad ? [['Priorizar', c.temasPrioridad]] : []),
+        ['Prioridad', `${PRIORIDADES[c.prioridad]} · ${DESCRIPCION_PRIORIDAD[c.prioridad]}`],
+        ['Disponibilidad', `${c.dias} días · ${plural(c.horasPorDia, 'hora', 'horas')} al día desde las ${c.horaInicio}${c.finesDeSemana ? ' · con fines de semana' : ' · sin fines de semana'}`],
+      ];
+      return `
+        <h3 class="asistente__pregunta">Revisa tu plan antes de generarlo</h3>
+        <dl class="confirmacion">${filas.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+        ${selector ? resumenContexto(selector.contexto, { apuntesElegidos: selector.apunteIds().length, temasElegidos: c.temas }) : ''}
+        <p class="acceso__ayuda">${iconos.chispa.replace('<svg', '<svg style="width:14px;height:14px;display:inline;vertical-align:-2px"')} Verás una vista previa para revisarla o editarla. Nada se guarda hasta que la aceptes.</p>`;
+    }
+
+    function irA(n) {
+      paso = n;
+      dialogo.querySelectorAll('[data-paso]').forEach((el) => { el.hidden = Number(el.dataset.paso) !== n; });
+      dialogo.querySelectorAll('[data-paso-indicador]').forEach((el) => {
+        const i = Number(el.dataset.pasoIndicador);
+        el.classList.toggle('hecho', i < Math.min(n, 3));
+        el.classList.toggle('actual', i === Math.min(n, 2));
+      });
+      btnAnterior.disabled = n === 0;
+      btnRegenerar.hidden = n !== 3 || !propuesta;
+      btnContinuar.innerHTML = n === 2 ? `${iconos.chispa}Generar vista previa` : n === 3 ? `${iconos.guardar}Aceptar y guardar` : `Continuar${iconos.adelante}`;
+      btnContinuar.disabled = n === 3 && !propuesta;
+      dialogo.querySelector('.modal__cuerpo').scrollTop = 0;
+    }
+
+    async function generarVistaPrevia() {
+      const zona = dialogo.querySelector('[data-vista-previa]');
+      propuesta = null;
+      irA(3);
+      zona.innerHTML = `<div class="generando">${iconos.lapiz.replace('<svg', '<svg class="generando__lapiz"')}
+        <h3>Armando tu plan</h3><p>El asistente está revisando tus apuntes, tareas, exámenes y resultados. Puede tardar hasta un minuto.</p></div>`;
+      try {
+        ({ propuesta } = await api.vistaPreviaPlan(opcionesEnviadas));
+        zona.innerHTML = vistaPreviaHtml(propuesta);
+      } catch (error) {
+        zona.innerHTML = `<div class="vacio" role="alert">${iconos.alerta}<h3>No se pudo generar el plan</h3><p>${esc(error.message)}</p></div>`;
+      }
+      irA(3);
+      btnRegenerar.hidden = false;
+    }
+
+    /** Lee los cambios que hizo el estudiante en la vista previa. */
+    function leerPropuesta() {
+      const dias = propuesta.dias.map((d, i) => ({
+        fecha: d.fecha,
+        actividades: d.actividades.map((a, j) => {
+          const fila = dialogo.querySelector(`[data-dia="${i}"][data-act="${j}"]`);
+          if (!fila) return null;
+          const valor = (campo) => fila.querySelector(`[data-campo="${campo}"]`).value;
+          return { ...a, inicio: valor('inicio'), fin: valor('fin'), titulo: valor('titulo').trim() || a.titulo };
+        }).filter(Boolean),
+      })).filter((d) => d.actividades.length);
+      const invalida = dias.flatMap((d) => d.actividades).find((a) => !a.inicio || !a.fin || a.fin <= a.inicio);
+      if (invalida) throw new Error(`Revisa el horario de «${invalida.titulo}»: la hora de fin debe ser después del inicio.`);
+      if (!dias.some((d) => d.actividades.some((a) => a.tipo !== 'descanso'))) throw new Error('El plan quedó sin actividades.');
+      return { titulo: form.tituloPlan.value.trim() || propuesta.titulo, resumen: propuesta.resumen, consejos: propuesta.consejos, dias };
+    }
+
+    async function continuar() {
+      cajaError.hidden = true;
+      try {
+        if (paso === 0) {
+          cuerpo();
+          ajustarDiasExamen();
+          return irA(1);
+        }
+        if (paso === 1) {
+          dialogo.querySelector('[data-confirmacion]').innerHTML = confirmacionHtml(cuerpo());
+          return irA(2);
+        }
+        if (paso === 2) {
+          opcionesEnviadas = cuerpo();
+          return generarVistaPrevia();
+        }
+        if (paso === 3 && propuesta) {
+          const { plan } = await conCarga(btnContinuar, () => api.generarPlan({ ...opcionesEnviadas, propuesta: leerPropuesta() }));
+          dialogo.close();
+          aviso('Plan de estudio guardado');
+          await cargar(plan.id);
+        }
+      } catch (error) {
+        mostrarError(cajaError, error);
+        cajaError.scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    // Eventos del asistente
+    dialogo.addEventListener('close', () => dialogo.remove());
+    dialogo.querySelectorAll('[data-cerrar]').forEach((b) => b.addEventListener('click', () => dialogo.close()));
+    dialogo.addEventListener('cancel', async (e) => {
+      if (!propuesta) return;
+      e.preventDefault();
+      if (await confirmar({ titulo: 'Cerrar sin guardar', mensaje: 'La vista previa del plan se perderá.', textoConfirmar: 'Cerrar' })) dialogo.close();
     });
+    form.addEventListener('submit', (e) => e.preventDefault());
+    btnContinuar.addEventListener('click', async () => {
+      if (ocupado) return;
+      ocupado = true;
+      await continuar();
+      ocupado = false;
+    });
+    btnAnterior.addEventListener('click', () => { cajaError.hidden = true; irA(Math.max(0, paso - 1)); });
+    btnRegenerar.addEventListener('click', () => { if (opcionesEnviadas) generarVistaPrevia(); });
+    form.addEventListener('change', (e) => {
+      if (e.target.name === 'alcance') alternar();
+      if (e.target.name === 'materiaId' || e.target.name === 'examenId') cargarTemas();
+      if (e.target.name === 'prioridad') form.querySelector('[data-descripcion-prioridad]').textContent = DESCRIPCION_PRIORIDAD[e.target.value];
+    });
+    form.addEventListener('click', (e) => {
+      const quitar = e.target.closest('[data-quitar]');
+      if (quitar) {
+        const fila = quitar.closest('li');
+        const lista = fila.parentElement;
+        fila.remove();
+        if (!lista.children.length) lista.closest('.dia-plan').remove();
+      }
+    });
+
+    dialogo.showModal();
+    alternar();
+    irA(0);
   }
 
   /* Reorganizar: propuesta de la IA -> revisión -> aplicar */
@@ -399,7 +697,7 @@ export async function renderPlan(contenedor, parametros) {
   await cargar(parametros.id);
   if (parametros.nuevo) {
     abrirGenerador({
-      alcance: ALCANCES[parametros.nuevo] ? parametros.nuevo : 'general',
+      alcance: OBJETIVOS.some((o) => o.valor === parametros.nuevo) ? parametros.nuevo : 'general',
       materiaId: parametros.materiaId,
       examenId: parametros.examenId,
       apunteIds: parametros.apunteIds,

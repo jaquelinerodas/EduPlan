@@ -8,7 +8,8 @@ import { api } from '../api.js';
 import { obtenerMaterias } from '../datos.js';
 import { iconos } from '../iconos.js';
 import { aviso, abrirFormulario, confirmar, conCarga, esqueleto, errorCarga, vacio } from '../ui.js';
-import { esc, colorSeguro, formato, plural, DIFICULTADES } from '../utilidades.js';
+import { montarSelectorTemas } from '../seleccion.js';
+import { esc, colorSeguro, formato, plural, cuentaRegresiva, aISO, sumarDias, DIFICULTADES } from '../utilidades.js';
 
 const LETRAS = ['A', 'B', 'C', 'D'];
 
@@ -53,39 +54,40 @@ function filaCuestionario(c) {
 
 function formularioNuevo({ materias, apuntes, examenes }, inicial) {
   const seleccion = new Set(String(inicial.apunteIds || '').split(',').filter(Boolean));
-  const porMateria = new Map();
+  const grupos = new Map();
   for (const a of apuntes) {
-    if (!porMateria.has(a.materia)) porMateria.set(a.materia, []);
-    porMateria.get(a.materia).push(a);
+    const clave = `${a.materia}${a.periodo ? ` · ${a.periodo}` : ''}`;
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(a);
   }
   return `
     <fieldset class="campo" style="border:0;padding:0;margin:0">
       <legend>¿De dónde salen las preguntas?</legend>
       <div class="segmentos segmentos--bloque" style="margin-top:6px">
-        ${[['apuntes', 'Apuntes que elija'], ['materia', 'Toda una materia'], ['examen', 'Un examen']]
+        ${[['apuntes', 'Apuntes que elija'], ['materia', 'Una materia'], ['examen', 'Un examen']]
           .map(([k, v]) => `<label><input type="radio" name="fuente" value="${k}"${k === inicial.fuente ? ' checked' : ''}><span>${v}</span></label>`).join('')}
       </div>
     </fieldset>
     <div data-si="apuntes">
       <div class="campo"><span>Apuntes</span>
-        ${apuntes.length ? `<div class="lista-seleccion">${[...porMateria].map(([materia, lista]) => `
-          <p class="lista-seleccion__grupo">${esc(materia)}</p>
-          ${lista.map((a) => `<label><input type="checkbox" name="apunteIds" value="${esc(a.id)}"${seleccion.has(a.id) ? ' checked' : ''}>${esc(a.titulo)}</label>`).join('')}`).join('')}
+        ${apuntes.length ? `<div class="lista-seleccion">${[...grupos].map(([grupo, lista]) => `
+          <p class="lista-seleccion__grupo">${esc(grupo)}</p>
+          ${lista.map((a) => `<label><input type="checkbox" name="apunteIdsLibres" value="${esc(a.id)}"${seleccion.has(a.id) ? ' checked' : ''}>${esc(a.titulo)}</label>`).join('')}`).join('')}
         </div>` : '<p class="acceso__ayuda">Aún no tienes apuntes. <a href="#/apuntes">Escribe uno</a>.</p>'}
       </div>
     </div>
     <div data-si="materia">
       <label class="campo"><span>Materia</span>
-        <select class="selector" name="materiaId">${materias.map((m) => `<option value="${esc(m.id)}"${m.id === inicial.materiaId ? ' selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
+        <select class="selector" name="materiaId">${materias.map((m) => `<option value="${esc(m.id)}"${m.id === inicial.materiaId ? ' selected' : ''}>${esc(m.nombre)}${m.periodo ? ` · ${esc(m.periodo)}` : ''}</option>`).join('')}</select></label>
     </div>
     <div data-si="examen">
       <label class="campo"><span>Examen</span>
         ${examenes.length
-          ? `<select class="selector" name="examenId">${examenes.map((e) => `<option value="${esc(e.id)}"${e.id === inicial.examenId ? ' selected' : ''}>${esc(e.titulo)} · ${esc(e.materia)}</option>`).join('')}</select>`
+          ? `<select class="selector" name="examenId">${examenes.map((e) => `<option value="${esc(e.id)}"${e.id === inicial.examenId ? ' selected' : ''}>${esc(e.titulo)} · ${esc(e.materia)} · ${esc(cuentaRegresiva(e.fecha))}</option>`).join('')}</select>`
           : '<p class="acceso__ayuda">No tienes exámenes próximos. <a href="#/examenes">Registra uno</a>.</p>'}
       </label>
-      <p class="acceso__ayuda">Usa los apuntes de la materia, los temas del examen y lo que has fallado antes.</p>
     </div>
+    <div data-zona-temas></div>
     <div class="formulario__fila">
       <label class="campo"><span>Número de preguntas</span>
         <select class="selector" name="numPreguntas">${[5, 10, 15, 20].map((n) => `<option value="${n}"${n === 10 ? ' selected' : ''}>${n} preguntas</option>`).join('')}</select></label>
@@ -137,23 +139,51 @@ async function vistaLista(contenedor, parametros) {
       aviso(error.message, 'error');
       return;
     }
+    let selector = null;
+    let peticion = 0;
+
+    // Al elegir una materia o un examen se cargan sus apuntes, semestres y temas
+    async function cargarTemas(form) {
+      const fuente = form.querySelector('[name="fuente"]:checked').value;
+      const zona = form.querySelector('[data-zona-temas]');
+      selector = null;
+      const filtro = fuente === 'materia' ? { materiaId: form.materiaId.value }
+        : fuente === 'examen' && form.examenId ? { examenId: form.examenId.value } : null;
+      if (!filtro) { zona.innerHTML = ''; return; }
+      const mia = ++peticion;
+      try {
+        const s = await montarSelectorTemas(zona, filtro, { seleccion: inicial.apunteIds ? String(inicial.apunteIds).split(',') : null });
+        if (mia === peticion) selector = s;
+      } catch (error) {
+        zona.innerHTML = `<p class="formulario__error">${esc(error.message)}</p>`;
+      }
+    }
     const alternar = (form) => {
       const fuente = form.querySelector('[name="fuente"]:checked').value;
       form.querySelectorAll('[data-si]').forEach((el) => { el.hidden = el.dataset.si !== fuente; });
+      cargarTemas(form);
     };
     abrirFormulario({
       titulo: 'Nuevo cuestionario',
       textoEnviar: 'Generar preguntas',
       contenido: formularioNuevo(datos, { fuente: 'apuntes', ...inicial }),
       alAbrir: (form) => {
+        form.closest('dialog').classList.add('modal--ancho');
         alternar(form);
-        form.addEventListener('change', (e) => { if (e.target.name === 'fuente') alternar(form); });
+        form.addEventListener('change', (e) => {
+          if (e.target.name === 'fuente') alternar(form);
+          if (e.target.name === 'materiaId' || e.target.name === 'examenId') cargarTemas(form);
+        });
       },
       alEnviar: async (f, form) => {
         const cuerpo = { fuente: f.fuente, numPreguntas: Number(f.numPreguntas), dificultad: f.dificultad };
-        if (f.fuente === 'apuntes') cuerpo.apunteIds = new FormData(form).getAll('apunteIds');
-        if (f.fuente === 'materia') cuerpo.materiaId = f.materiaId;
-        if (f.fuente === 'examen') cuerpo.examenId = f.examenId;
+        if (f.fuente === 'apuntes') cuerpo.apunteIds = new FormData(form).getAll('apunteIdsLibres');
+        else {
+          if (!selector) throw new Error('Espera a que carguen los temas.');
+          Object.assign(cuerpo, selector.cuerpo());
+          if (f.fuente === 'materia') cuerpo.materiaId = f.materiaId;
+          if (f.fuente === 'examen') cuerpo.examenId = f.examenId;
+        }
         const { cuestionario } = await api.generarCuestionario(cuerpo);
         aviso('Cuestionario listo');
         location.hash = `#/cuestionarios/${cuestionario.id}`;
@@ -189,7 +219,95 @@ async function vistaLista(contenedor, parametros) {
 }
 
 /* ---------- Resultado y revisión ---------- */
-function resultadoHtml(c, { intento, revision }) {
+function comparacionHtml(intento, comp) {
+  if (!comp) return '';
+  const dif = Math.round(intento.puntaje - comp.puntajeAnterior);
+  const tono = dif > 0 ? 'var(--verde)' : dif < 0 ? 'var(--rojo)' : 'var(--grafito-suave)';
+  return `
+    <div class="comparacion">
+      <p><b>Comparado con tu intento anterior</b> (${esc(formato.fechaCorta(comp.fechaAnterior))})</p>
+      <p class="comparacion__cifras">
+        <span>${Math.round(comp.puntajeAnterior)}%</span><span aria-hidden="true">→</span><b>${Math.round(intento.puntaje)}%</b>
+        <span style="color:${tono};font-weight:700">${dif > 0 ? '+' : ''}${dif} puntos</span>
+      </p>
+      ${comp.mejoraron.length ? `<p>Mejoraste en: ${comp.mejoraron.map((t) => `<span class="insignia insignia--verde">${esc(t)}</span>`).join(' ')}</p>` : ''}
+      ${comp.siguenDebiles.length ? `<p>Siguen pendientes: ${comp.siguenDebiles.map((t) => `<span class="insignia insignia--rojo">${esc(t)}</span>`).join(' ')}</p>` : ''}
+    </div>`;
+}
+
+function accionesHtml(c, { intento, analisis }) {
+  const a = analisis;
+  if (!a) return '';
+  const debiles = a.temas.filter((t) => t.fallos > 0);
+  if (!debiles.length) {
+    return `<section class="hoja siguientes"><div class="hoja__cuerpo">
+      <h2>${iconos.ok}Respondiste todo bien</h2>
+      ${comparacionHtml(intento, a.comparacion)}
+      <p style="color:var(--grafito-suave)">Vuelve a practicar en unos días para no olvidarlo.</p></div></section>`;
+  }
+  return `
+    <section class="hoja siguientes" aria-labelledby="siguientes-titulo">
+      <div class="hoja__encabezado"><h2 id="siguientes-titulo">Qué hacer ahora</h2></div>
+      <div class="siguientes__rejilla">
+        <article class="paso-repaso">
+          <span class="paso-repaso__num">1</span>
+          <div>
+            <h3>Temas donde fallaste</h3>
+            <ul class="temas-fallo">${debiles.map((t) => `
+              <li><span>${esc(t.tema)}</span><small>${t.fallos} de ${t.total} mal</small>
+                <span class="avance" aria-hidden="true"><span style="--valor:${((t.total - t.fallos) / t.total) * 100}%;--color:var(--verde)"></span></span></li>`).join('')}
+            </ul>
+          </div>
+        </article>
+        <article class="paso-repaso">
+          <span class="paso-repaso__num">2</span>
+          <div>
+            <h3>Vuelve a estudiar</h3>
+            ${a.recomendaciones.length ? `<ul class="apuntes-recomendados">${a.recomendaciones.map((r) => `
+              <li><a href="#/apuntes?id=${esc(r.id)}">${iconos.apuntes}<span><b>${esc(r.titulo)}</b>
+                <small>${esc(r.materia)} · ${plural(r.fallos, 'pregunta fallada', 'preguntas falladas')}</small></span></a></li>`).join('')}</ul>`
+              : '<p class="acceso__ayuda">Repasa tus apuntes de los temas de la izquierda.</p>'}
+          </div>
+        </article>
+        <article class="paso-repaso">
+          <span class="paso-repaso__num">3</span>
+          <div>
+            <h3>Memoriza lo que fallaste</h3>
+            ${a.falladasSinTarjeta
+              ? `<p class="acceso__ayuda">Convierte cada pregunta fallada en una tarjeta con su respuesta y explicación.</p>
+                 <button type="button" class="boton boton--secundario" data-tarjetas-falladas>${iconos.tarjetas}Crear ${plural(a.falladasSinTarjeta, 'tarjeta', 'tarjetas')}</button>`
+              : `<p class="acceso__ayuda">Ya tienes tarjetas de estas preguntas.</p>
+                 <a class="boton boton--secundario" href="#/tarjetas?repaso=1">${iconos.jugar}Repasar tarjetas</a>`}
+          </div>
+        </article>
+        <article class="paso-repaso">
+          <span class="paso-repaso__num">4</span>
+          <div>
+            <h3>Agenda un repaso</h3>
+            <p class="acceso__ayuda">EduPlan propone un horario libre y lo agrega a tu plan de estudio.</p>
+            <button type="button" class="boton boton--secundario" data-agendar-repaso>${iconos.calendario}Programar sesión</button>
+          </div>
+        </article>
+      </div>
+      ${a.comparacion ? `<div class="hoja__cuerpo" style="padding-top:0">${comparacionHtml(intento, a.comparacion)}</div>` : ''}
+    </section>`;
+}
+
+function historialHtml(historial) {
+  if (!historial || historial.length < 2) return '';
+  const lista = [...historial].reverse();
+  return `
+    <section class="hoja">
+      <div class="hoja__encabezado"><h2 style="font-size:var(--t-md)">Tus intentos</h2></div>
+      <ol class="intentos">${lista.map((i, n) => `
+        <li><small>${n + 1}.º · ${esc(formato.fechaCorta(i.creadoEn))}</small>
+          <span class="intentos__barra" style="--valor:${i.puntaje}%"></span><b>${Math.round(i.puntaje)}%</b></li>`).join('')}
+      </ol>
+    </section>`;
+}
+
+function resultadoHtml(c, datos) {
+  const { intento, revision } = datos;
   const p = Math.round(intento.puntaje);
   return `
     <section class="hoja resultado">
@@ -197,9 +315,6 @@ function resultadoHtml(c, { intento, revision }) {
       <div>
         <h2>${intento.correctas} de ${intento.total} correctas</h2>
         <p style="color:var(--grafito-suave)">${esc(mensajePuntaje(p))}</p>
-        ${intento.temasDebiles?.length ? `
-          <p style="margin-top:var(--e-3);font-weight:700;font-size:var(--t-sm)">Temas a reforzar</p>
-          <div class="resultado__temas">${intento.temasDebiles.map((t) => `<span class="etiqueta-tipo" style="--c:var(--rojo)">${esc(t)}</span>`).join('')}</div>` : ''}
         <div class="resultado__acciones">
           <a class="boton boton--primario" href="#/cuestionarios/${esc(c.id)}?r=${Date.now()}">${iconos.reorganizar}Intentar de nuevo</a>
           ${c.examenId ? `<a class="boton boton--secundario" href="#/plan?nuevo=examen&examenId=${esc(c.examenId)}">${iconos.plan}Plan para reforzar</a>`
@@ -208,6 +323,8 @@ function resultadoHtml(c, { intento, revision }) {
         </div>
       </div>
     </section>
+    <div data-acciones-resultado>${accionesHtml(c, datos)}</div>
+    ${historialHtml(datos.historial)}
     <h2 style="margin:var(--e-6) 0 var(--e-4);font-size:var(--t-md)">Revisión de cada pregunta</h2>
     <ol class="revision">${revision.map((r, i) => `
       <li class="hoja${r.esCorrecta ? '' : ' mal'}">
@@ -216,6 +333,41 @@ function resultadoHtml(c, { intento, revision }) {
         <ol>${r.opciones.map((o, j) => `<li class="${j === r.correcta ? 'correcta' : j === r.elegida ? 'elegida-mal' : ''}">${esc(o)}${j === r.correcta ? ' ✓' : ''}</li>`).join('')}</ol>
         <p class="revision__explicacion">${esc(r.explicacion)}</p>
       </li>`).join('')}</ol>`;
+}
+
+/** Ventana para programar la sesión de repaso con la sugerencia de EduPlan. */
+async function agendarRepaso(c, boton) {
+  let s;
+  try {
+    ({ sugerencia: s } = await conCarga(boton, () => api.sugerirRepaso(c.id)));
+  } catch (error) {
+    aviso(error.message, 'error');
+    return;
+  }
+  const hoy = aISO(new Date());
+  abrirFormulario({
+    titulo: 'Programar sesión de repaso',
+    textoEnviar: 'Agregar a mi plan',
+    contenido: `
+      <div class="sugerencia-repaso">
+        <p><b>${esc(s.titulo)}</b></p>
+        <p class="acceso__ayuda">${esc(s.descripcion)}</p>
+      </div>
+      <div class="formulario__fila">
+        <label class="campo"><span>Día</span>
+          <input class="entrada" type="date" name="fecha" value="${esc(s.fecha)}" min="${hoy}" max="${aISO(sumarDias(new Date(), 60))}" required></label>
+        <label class="campo"><span>Hora</span>
+          <input class="entrada" type="time" name="inicio" value="${esc(s.inicio)}" required></label>
+        <label class="campo"><span>Duración</span>
+          <select class="selector" name="duracion">${[30, 45, 60, 90, 120].map((m) => `<option value="${m}"${m === s.duracion ? ' selected' : ''}>${m < 60 ? `${m} minutos` : m === 60 ? '1 hora' : `${m / 60} horas`}</option>`).join('')}</select></label>
+      </div>
+      <p class="acceso__ayuda" data-destino>${s.plan ? `Se agregará a tu plan «${esc(s.plan.titulo)}».` : 'Como no tienes un plan para ese día, EduPlan creará un plan de repaso.'}</p>`,
+    alEnviar: async (f) => {
+      const { plan, nuevo } = await api.programarRepaso(c.id, { fecha: f.fecha, inicio: f.inicio, duracion: Number(f.duracion) });
+      aviso(nuevo ? 'Plan de repaso creado' : `Sesión agregada a «${plan.titulo}»`);
+      location.hash = `#/plan?id=${plan.id}`;
+    },
+  });
 }
 
 /* ---------- Resolver ---------- */
@@ -238,10 +390,33 @@ async function vistaResolver(contenedor, id, parametros) {
       </div>
     </div>`;
 
+  let resultado = null;
+  const mostrarResultado = (datos) => {
+    resultado = { ...datos, historial: datos.historial ?? c.historial };
+    contenedor.innerHTML = `<div class="examen-en-curso">${encabezado}${resultadoHtml(c, resultado)}</div>`;
+  };
+
+  // Acciones después de calificar (tarjetas de falladas y sesión de repaso)
+  contenedor.addEventListener('click', async (e) => {
+    const tarjetas = e.target.closest('[data-tarjetas-falladas]');
+    if (tarjetas) {
+      try {
+        const r = await conCarga(tarjetas, () => api.tarjetasDeFalladas(c.id));
+        aviso(`${plural(r.creadas, 'tarjeta creada', 'tarjetas creadas')} con tus preguntas falladas`);
+        resultado.analisis.falladasSinTarjeta = 0;
+        contenedor.querySelector('[data-acciones-resultado]').innerHTML = accionesHtml(c, resultado);
+      } catch (error) {
+        aviso(error.message, 'error');
+      }
+      return;
+    }
+    const agendar = e.target.closest('[data-agendar-repaso]');
+    if (agendar) agendarRepaso(c, agendar);
+  });
+
   if (parametros.revision) {
     try {
-      const datos = await api.revisionCuestionario(id);
-      contenedor.innerHTML = `<div class="examen-en-curso">${encabezado}${resultadoHtml(c, datos)}</div>`;
+      mostrarResultado(await api.revisionCuestionario(id));
     } catch (error) {
       contenedor.innerHTML = errorCarga(error, false);
     }
@@ -291,8 +466,9 @@ async function vistaResolver(contenedor, id, parametros) {
       textoConfirmar: 'Calificar de todos modos', tono: 'exito',
     }))) return;
     try {
-      const resultado = await conCarga(boton, () => api.responderCuestionario(c.id, respuestas));
-      contenedor.innerHTML = `<div class="examen-en-curso">${encabezado}${resultadoHtml(c, resultado)}</div>`;
+      const datos = await conCarga(boton, () => api.responderCuestionario(c.id, respuestas));
+      const nuevo = { id: datos.intento.id, puntaje: datos.intento.puntaje, creadoEn: datos.intento.creadoEn || new Date().toISOString() };
+      mostrarResultado({ ...datos, historial: [nuevo, ...(c.historial || [])] });
       window.scrollTo(0, 0);
     } catch (error) {
       aviso(error.message, 'error');

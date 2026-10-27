@@ -1,6 +1,6 @@
 /** Materias: estante de cuadernos con su avance (RF03, HU02). */
 import { api } from '../api.js';
-import { obtenerMaterias, invalidarMaterias } from '../datos.js';
+import { obtenerMaterias, invalidarMaterias, obtenerPeriodos, invalidarPeriodos, TIPOS_PERIODO } from '../datos.js';
 import { iconos } from '../iconos.js';
 import { aviso, abrirFormulario, confirmar, esqueleto, errorCarga, vacio } from '../ui.js';
 import { esc, colorSeguro, describirEntrega, plural, cuentaRegresiva, COLORES_MATERIA } from '../utilidades.js';
@@ -55,7 +55,43 @@ function cuaderno(m) {
     </article>`;
 }
 
-function formularioMateria(m = {}) {
+/** Selector de semestre o bloque con opción para crear uno nuevo ahí mismo. */
+export function campoPeriodo(periodos, elegido, { nombre = 'periodoId', etiqueta = 'Semestre o bloque' } = {}) {
+  return `
+    <label class="campo"><span>${etiqueta} <span class="opcional">(opcional)</span></span>
+      <select class="selector" name="${nombre}" data-campo-periodo>
+        <option value="">Sin semestre ni bloque</option>
+        ${periodos.map((p) => `<option value="${esc(p.id)}"${p.id === elegido ? ' selected' : ''}>${esc(p.nombre)}</option>`).join('')}
+        <option value="__nuevo__">＋ Crear nuevo…</option>
+      </select></label>
+    <div class="formulario__fila" data-periodo-nuevo hidden>
+      <label class="campo"><span>Nombre</span>
+        <input class="entrada" name="periodoNombre" maxlength="80" placeholder="Ej. Semestre 3 o Bloque 1"></label>
+      <label class="campo"><span>Tipo</span>
+        <select class="selector" name="periodoTipo">${Object.entries(TIPOS_PERIODO).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+    </div>`;
+}
+
+/** Muestra los campos de "crear nuevo" cuando se elige esa opción. */
+export function conectarCampoPeriodo(form) {
+  const select = form.querySelector('[data-campo-periodo]');
+  const nuevo = form.querySelector('[data-periodo-nuevo]');
+  select?.addEventListener('change', () => {
+    nuevo.hidden = select.value !== '__nuevo__';
+    if (!nuevo.hidden) form.periodoNombre.focus();
+  });
+}
+
+/** Devuelve el id del periodo elegido; si eligió "crear nuevo", lo crea primero. */
+export async function resolverPeriodo(f) {
+  if (f.periodoId !== '__nuevo__') return f.periodoId || null;
+  if (!f.periodoNombre?.trim()) throw new Error('Escribe el nombre del nuevo semestre o bloque.');
+  const { periodo } = await api.crearPeriodo({ nombre: f.periodoNombre, tipo: f.periodoTipo });
+  invalidarPeriodos();
+  return periodo.id;
+}
+
+function formularioMateria(m = {}, periodos = []) {
   const actual = (m.color || COLORES_MATERIA[0]).toUpperCase();
   const colores = COLORES_MATERIA.includes(actual) ? COLORES_MATERIA : [...COLORES_MATERIA, actual];
   return `
@@ -68,6 +104,7 @@ function formularioMateria(m = {}) {
     <label class="campo"><span>Descripción <span class="opcional">(opcional)</span></span>
       <textarea class="area-texto" name="descripcion" rows="2" maxlength="2000" style="min-height:4.5rem">${esc(m.descripcion)}</textarea>
     </label>
+    ${campoPeriodo(periodos, m.periodoId)}
     <fieldset class="campo" style="border:0;padding:0;margin:0">
       <legend>Color</legend>
       <div class="paleta">
@@ -93,11 +130,28 @@ export async function renderMaterias(contenedor) {
 
   const estante = contenedor.querySelector('[data-estante]');
 
+  let periodos = [];
+
+  /** Estante agrupado por semestre o bloque (si el estudiante los usa). */
+  function estanteHtml() {
+    if (!periodos.length || materias.every((m) => !m.periodoId)) {
+      return `<div class="estante">${materias.map(cuaderno).join('')}</div>`;
+    }
+    const grupos = [...periodos.map((p) => ({ id: p.id, nombre: p.nombre })), { id: null, nombre: 'Sin semestre ni bloque' }]
+      .map((g) => ({ ...g, materias: materias.filter((m) => (m.periodoId || null) === g.id) }))
+      .filter((g) => g.materias.length);
+    return grupos.map((g) => `
+      <section class="grupo-periodo">
+        <h2 class="grupo-periodo__titulo">${iconos.carpeta}${esc(g.nombre)}<small>${plural(g.materias.length, 'materia', 'materias')}</small></h2>
+        <div class="estante">${g.materias.map(cuaderno).join('')}</div>
+      </section>`).join('');
+  }
+
   async function cargar() {
     try {
-      materias = await obtenerMaterias({ forzar: true });
+      [materias, periodos] = await Promise.all([obtenerMaterias({ forzar: true }), obtenerPeriodos({ forzar: true })]);
       estante.innerHTML = materias.length
-        ? `<div class="estante">${materias.map(cuaderno).join('')}</div>`
+        ? estanteHtml()
         : `<section class="hoja">${vacio({
           icono: iconos.materias,
           titulo: 'Aún no tienes materias',
@@ -113,13 +167,15 @@ export async function renderMaterias(contenedor) {
     abrirFormulario({
       titulo: materia ? 'Editar materia' : 'Nueva materia',
       textoEnviar: materia ? 'Guardar cambios' : 'Crear materia',
-      contenido: formularioMateria(materia),
+      contenido: formularioMateria(materia, periodos),
+      alAbrir: conectarCampoPeriodo,
       alEnviar: async (f) => {
         const datos = {
           nombre: f.nombre,
           docente: f.docente.trim() ? f.docente : null,
           descripcion: f.descripcion.trim() ? f.descripcion : null,
           color: f.color,
+          periodoId: await resolverPeriodo(f),
         };
         if (materia) await api.editarMateria(materia.id, datos);
         else await api.crearMateria(datos);

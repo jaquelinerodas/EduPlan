@@ -90,7 +90,15 @@ export const api = {
   editarApunte: (id, datos) => peticion('PUT', `/api/apuntes/${id}`, datos),
   borrarApunte: (id) => peticion('DELETE', `/api/apuntes/${id}`),
 
+  etiquetasApuntes: () => peticion('GET', '/api/apuntes/etiquetas'),
   resumirApunte: (id) => peticion('POST', `/api/ia/resumen/${id}`),
+
+  periodos: () => peticion('GET', '/api/periodos'),
+  crearPeriodo: (datos) => peticion('POST', '/api/periodos', datos),
+  editarPeriodo: (id, datos) => peticion('PUT', `/api/periodos/${id}`, datos),
+  borrarPeriodo: (id) => peticion('DELETE', `/api/periodos/${id}`),
+
+  contexto: (filtros) => peticion('GET', conFiltros('/api/contexto', filtros)),
 
   alertas: () => peticion('GET', '/api/alertas'),
   calendario: (desde, hasta) => peticion('GET', conFiltros('/api/calendario', { desde, hasta })),
@@ -103,6 +111,7 @@ export const api = {
   planes: () => peticion('GET', '/api/planes'),
   plan: (id) => peticion('GET', `/api/planes/${id}`),
   generarPlan: (opciones) => peticion('POST', '/api/planes', opciones),
+  vistaPreviaPlan: (opciones) => peticion('POST', '/api/planes/vista-previa', opciones),
   borrarPlan: (id) => peticion('DELETE', `/api/planes/${id}`),
   marcarActividad: (planId, actividadId, completada) => peticion('PATCH', `/api/planes/${planId}/actividades/${actividadId}`, { completada }),
   proponerReorganizacion: (planId) => peticion('POST', `/api/planes/${planId}/reorganizar`),
@@ -114,6 +123,9 @@ export const api = {
   responderCuestionario: (id, respuestas) => peticion('POST', `/api/cuestionarios/${id}/intentos`, { respuestas }),
   revisionCuestionario: (id) => peticion('GET', `/api/cuestionarios/${id}/revision`),
   borrarCuestionario: (id) => peticion('DELETE', `/api/cuestionarios/${id}`),
+  tarjetasDeFalladas: (id) => peticion('POST', `/api/cuestionarios/${id}/tarjetas`),
+  sugerirRepaso: (id) => peticion('GET', `/api/cuestionarios/${id}/repaso`),
+  programarRepaso: (id, datos) => peticion('POST', `/api/cuestionarios/${id}/repaso`, datos),
 
   tarjetas: (filtros) => peticion('GET', conFiltros('/api/flashcards', filtros)),
   resumenTarjetas: () => peticion('GET', '/api/flashcards/resumen'),
