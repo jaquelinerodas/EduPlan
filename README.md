@@ -70,16 +70,28 @@ Esquema de BD: `auth`. Detalle en **[ms-auth/README.md](ms-auth/README.md)**.
 
 Todas las rutas, excepto `health` y `docs`, exigen `Authorization: Bearer <JWT>` y solo devuelven datos del usuario del token (RF09). Esquema de BD: `academico`. Detalle en **[ms-academico/README.md](ms-academico/README.md)**.
 
-### nginx · Proxy inverso (puerto 80)
-Punto único de entrada (RF10). Configuración en [`nginx/default.conf`](nginx/default.conf):
+### nginx · Proxy inverso y HTTPS (puertos 80 y 443)
+Punto único de entrada (RF10) y **único contenedor con puertos publicados**. Configuración en [`nginx/`](nginx/README.md):
 
 | Ruta | Destino |
 |---|---|
+| `http://…` | Redirige a HTTPS |
 | `/` | Archivos del frontend |
 | `/auth/` | `ms-auth:3001` |
 | `/api/` | `ms-academico:3002` (timeout de 120 s por las respuestas de la IA) |
 
-También agrega encabezados de seguridad (Content-Security-Policy, X-Frame-Options, nosniff), compresión gzip y caché para las fuentes.
+TLS 1.2/1.3 con HTTP/2, certificado autofirmado automático en desarrollo y Let's Encrypt en producción, HSTS con dominio real, Content-Security-Policy y demás cabeceras de seguridad, límite de peticiones por IP (429 en JSON), compresión gzip y caché para las fuentes.
+
+### Redes y puertos (Fase 5)
+
+| Servicio | Puertos publicados | Redes |
+|---|---|---|
+| nginx | **80, 443** | `interna` |
+| ms-auth | ninguno | `interna`, `datos` |
+| ms-academico | ninguno | `interna`, `datos` |
+| postgres | ninguno | `datos` (red `internal`: sin entrada ni salida a internet) |
+
+Nginx no puede llegar a la base de datos, y la base no puede salir a internet. Los microservicios corren con sistema de archivos de **solo lectura**, sin root y sin escalar privilegios.
 
 ### frontend · SPA (HTML, CSS y JavaScript sin frameworks)
 Interfaz responsiva para computadora y teléfono, con modo oscuro automático. Detalle en **[frontend/README.md](frontend/README.md)**.
@@ -114,9 +126,10 @@ eduplan/
 ├── ms-auth/           # Microservicio 1: Google OAuth 2.0, correo y contraseña, JWT
 ├── ms-academico/      # Microservicio 2: materias, tareas, exámenes, apuntes e IA
 ├── frontend/          # SPA: HTML, CSS y JavaScript
-├── nginx/             # Configuración del proxy inverso
-├── docs/              # Diagrama de arquitectura y logo
-├── docker-compose.yml
+├── nginx/             # Proxy inverso, HTTPS y certificados
+├── docs/              # Diagrama de arquitectura, logo y guía de despliegue
+├── docker-compose.yml       # Producción y uso normal: solo Nginx publica puertos
+├── docker-compose.dev.yml   # Desarrollo: abre 5433, 3001 y 3002 en tu máquina
 ├── .env.example
 └── README.md
 ```
@@ -130,13 +143,17 @@ Node.js 22 + Express 5 · PostgreSQL 16 · Nginx · Docker y Docker Compose · O
 Requisito: Docker Desktop (o Docker Engine + Compose).
 
 ```bash
-git clone https://github.com/<tu-usuario>/eduplan.git
-cd eduplan
+git clone https://github.com/jaquelinerodas/EduPlan.git
+cd EduPlan
 cp .env.example .env        # completar contraseñas, claves de Google, JWT y API de IA
 docker compose up -d --build
 ```
 
-Abrir **http://localhost**. Para cargar datos de prueba:
+Abrir **https://localhost**. La primera vez el navegador avisa que la conexión no es privada, porque el certificado de desarrollo es autofirmado: **Configuración avanzada → Continuar a localhost** (o confía en el certificado, ver [nginx/README.md](nginx/README.md)).
+
+En Google Cloud Console registra `https://localhost/auth/google/callback` como URI de redireccionamiento autorizado.
+
+Para cargar datos de prueba:
 
 ```bash
 docker compose cp database/seeds/seed_dev.sql postgres:/tmp/seed_dev.sql
@@ -147,10 +164,18 @@ Usuario de prueba: **ana.lopez@ejemplo.com** · contraseña **Demo2026**.
 
 | Dirección | Para qué |
 |---|---|
-| http://localhost | Aplicación |
-| http://localhost/api/docs | Swagger de ms-academico |
-| http://localhost/auth/docs | Swagger de ms-auth |
-| http://localhost/api/health · /auth/health | Estado de cada microservicio |
+| https://localhost | Aplicación |
+| https://localhost/api/docs | Swagger de ms-academico |
+| https://localhost/auth/docs | Swagger de ms-auth |
+| https://localhost/api/health · /auth/health | Estado de cada microservicio |
+
+**Modo desarrollo** (abre en tu máquina el puerto 5433 de PostgreSQL para DBeaver/pgAdmin y los puertos 3001 y 3002):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+**Publicar en internet** con dominio y Let's Encrypt: ver **[docs/DESPLIEGUE.md](docs/DESPLIEGUE.md)**.
 
 **Actualizar una base existente** a las versiones 2 y 3 (sin perder datos; se pueden ejecutar varias veces):
 
@@ -178,7 +203,7 @@ No necesitan base de datos ni clave de IA: esas dependencias se simulan. Con `AI
 - [x] **Fase 4** · Frontend y proxy inverso Nginx
 - [x] **Versión 2** · Correo y contraseña, calendario, exámenes, planes por día, cuestionarios, tarjetas y alertas
 - [x] **Versión 3** · Semestres y bloques, apuntes organizados, temas elegidos, acciones después de un cuestionario, asistente de planes con vista previa
-- [ ] **Fase 5** · HTTPS, cierre de puertos internos y despliegue
+- [x] **Fase 5** · HTTPS, cierre de puertos internos, redes separadas y guía de despliegue
 - [ ] **Fase 6** · Colección de Postman y revisión final
 
 ## Convención de commits

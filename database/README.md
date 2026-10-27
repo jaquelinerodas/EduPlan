@@ -384,6 +384,10 @@ docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/03_mejoras
 docker compose cp database/init/04_organizacion.sql postgres:/tmp/04_organizacion.sql
 docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/04_organizacion.sql
 
+# Conectarte con DBeaver o pgAdmin (localhost:5433): la base ya no publica
+# su puerto por defecto; levanta el proyecto en modo desarrollo
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
 # Entrar a la consola SQL
 docker compose exec postgres psql -U eduplan_admin -d eduplan
 

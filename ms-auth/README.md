@@ -95,10 +95,10 @@ ms-auth/
 | `DATABASE_URL` | `postgresql://ms_auth:***@postgres:5432/eduplan` | Conexión con el usuario `ms_auth` |
 | `GOOGLE_CLIENT_ID` | `123-abc.apps.googleusercontent.com` | Google Cloud Console |
 | `GOOGLE_CLIENT_SECRET` | `GOCSPX-...` | Google Cloud Console |
-| `GOOGLE_CALLBACK_URL` | `http://localhost:3001/auth/google/callback` | Debe estar registrada en Google |
+| `GOOGLE_CALLBACK_URL` | `https://localhost/auth/google/callback` | Debe estar registrada en Google. Con `https://` la cookie de OAuth sale con `Secure` |
 | `JWT_SECRET` | 32+ caracteres aleatorios | Clave para firmar los tokens |
 | `JWT_EXPIRES_IN` | `2h` | Duración del token |
-| `FRONTEND_URL` | `http://localhost:3001/auth/prueba` | A dónde vuelve el usuario con su token |
+| `FRONTEND_URL` | `https://localhost/` | A dónde vuelve el usuario con su token |
 | `NODE_ENV` | `development` / `production` | En producción se oculta `/auth/prueba` |
 
 ## Errores

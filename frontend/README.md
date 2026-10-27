@@ -1,6 +1,6 @@
 # Frontend · EduPlan
 
-Aplicación de una sola página (SPA) en **HTML, CSS y JavaScript puro**, con módulos ES y sin frameworks ni dependencias externas. Nginx la sirve en `http://localhost` y todas las peticiones salen al mismo dominio (`/auth/*` y `/api/*`), así que no hace falta configurar CORS.
+Aplicación de una sola página (SPA) en **HTML, CSS y JavaScript puro**, con módulos ES y sin frameworks ni dependencias externas. Nginx la sirve en `https://localhost` y todas las peticiones salen al mismo dominio (`/auth/*` y `/api/*`), así que no hace falta configurar CORS.
 
 ## Vistas
 
@@ -72,7 +72,7 @@ frontend/
 
 1. Con correo y contraseña, el formulario llama a `/auth/login` o `/auth/registro` y recibe el JWT directamente.
    Con "Continuar con Google" se va a `/auth/google`.
-2. Al volver, ms-auth redirige a `http://localhost/#token=<JWT>`.
+2. Al volver, ms-auth redirige a `https://localhost/#token=<JWT>`.
 3. `sesion.js` guarda el token en `localStorage` y lo quita de la barra de direcciones.
 4. Cada petición lleva `Authorization: Bearer <JWT>`.
 5. Si el token expira o la API responde `401`, la sesión se cierra y se muestra el motivo.
