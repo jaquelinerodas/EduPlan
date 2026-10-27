@@ -1,0 +1,30 @@
+# =============================================================================
+#  EduPlan · docker-compose.dev.yml  (SOLO desarrollo)
+#  Vuelve a abrir los puertos internos, únicamente en tu máquina (127.0.0.1),
+#  para conectarte con DBeaver/pgAdmin o probar un microservicio directamente.
+#
+#    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+#  Sin este archivo (lo normal y en producción) solo Nginx tiene puertos abiertos.
+# =============================================================================
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    networks:
+      - datos
+      - desarrollo
+
+  ms-auth:
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  ms-academico:
+    ports:
+      - "127.0.0.1:3002:3002"
+
+networks:
+  # La red "datos" es interna (sin puertos hacia fuera); para publicar el puerto
+  # de PostgreSQL en desarrollo se conecta además a esta red normal.
+  desarrollo:
+    name: eduplan-desarrollo

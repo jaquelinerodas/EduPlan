@@ -1,17 +1,31 @@
-
+# =============================================================================
 #  EduPlan · docker-compose.yml
-#  FASE 4: PostgreSQL + ms-auth + ms-academico + nginx (con el frontend).
-#  Entrada única: http://localhost  (Nginx enruta /auth y /api)
-#  En la Fase 5 se agrega HTTPS y se cierran los puertos 3001/3002.
-
+#  FASE 5: HTTPS y puertos internos cerrados.
+#   - Entrada única: https://localhost (Nginx). http://localhost redirige a https.
+#   - ms-auth, ms-academico y PostgreSQL NO publican puertos: solo se llega a
+#     ellos a través de Nginx (y a la base solo desde los microservicios).
+#   - Para desarrollo (DBeaver, probar un microservicio directo) usa:
+#       docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# =============================================================================
 name: eduplan
 
+# Rotación de logs para que no llenen el disco
+x-logs: &logs
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
-  
+  # ---------------------------------------------------------------------------
+  # Base de datos compartida (solo en la red "datos", que no tiene salida)
+  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: eduplan-postgres
     restart: unless-stopped
+    <<: *logs
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -22,26 +36,27 @@ services:
       PGTZ: America/Guatemala
     volumes:
       - pgdata:/var/lib/postgresql/data
-      
+      # Los scripts de esta carpeta se ejecutan en orden alfabético
+      # SOLO la primera vez (cuando el volumen está vacío).
       - ./database/init:/docker-entrypoint-initdb.d:ro
-   
-    ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    expose:
+      - "5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - eduplan-net
+      - datos
 
-
+  # ---------------------------------------------------------------------------
   # Microservicio 1: autenticación y usuarios
-  
+  # ---------------------------------------------------------------------------
   ms-auth:
     build: ./ms-auth
     container_name: eduplan-ms-auth
     restart: unless-stopped
+    <<: *logs
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 3001
@@ -56,9 +71,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
-    ports:
-      - "127.0.0.1:3001:3001"
+    expose:
+      - "3001"
+    # Endurecimiento: sistema de archivos de solo lectura y sin escalar privilegios
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/auth/health"]
       interval: 15s
@@ -66,15 +86,17 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - eduplan-net
+      - interna   # Nginx y salida a internet (Google OAuth)
+      - datos     # PostgreSQL
 
- 
+  # ---------------------------------------------------------------------------
   # Microservicio 2: materias, tareas, apuntes e IA
- 
+  # ---------------------------------------------------------------------------
   ms-academico:
     build: ./ms-academico
     container_name: eduplan-ms-academico
     restart: unless-stopped
+    <<: *logs
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 3002
@@ -87,9 +109,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    
-    ports:
-      - "127.0.0.1:3002:3002"
+    expose:
+      - "3002"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3002/api/health"]
       interval: 15s
@@ -97,18 +123,24 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - eduplan-net
+      - interna   # Nginx y salida a internet (API de IA)
+      - datos     # PostgreSQL
 
-  
-  # Proxy inverso + frontend (único servicio pensado para el exterior)
-  
+  # ---------------------------------------------------------------------------
+  # Proxy inverso + frontend: el ÚNICO servicio con puertos publicados
+  # ---------------------------------------------------------------------------
   nginx:
-    image: nginx:1.27-alpine
+    build: ./nginx
     container_name: eduplan-nginx
     restart: unless-stopped
+    <<: *logs
+    environment:
+      DOMINIO: ${DOMINIO:-localhost}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/acme:/var/www/acme:ro
     depends_on:
       ms-auth:
         condition: service_healthy
@@ -116,18 +148,26 @@ services:
         condition: service_healthy
     ports:
       - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/salud"]
       interval: 30s
       timeout: 5s
       retries: 3
     networks:
-      - eduplan-net
+      - interna
 
 volumes:
   pgdata:
     name: eduplan_pgdata
 
 networks:
-  eduplan-net:
-    name: eduplan-net
+  # Nginx <-> microservicios (con salida a internet para Google y la IA)
+  interna:
+    name: eduplan-interna
+  # Microservicios <-> PostgreSQL. "internal" = sin salida ni entrada desde fuera
+  datos:
+    name: eduplan-datos
+    internal: true
