@@ -1,0 +1,3209 @@
+{
+	"info": {
+		"_postman_id": "091f5ad5-f570-4e11-bb5f-28f9609bd59d",
+		"name": "EduPlan API",
+		"description": "Colección de pruebas de los dos microservicios de EduPlan, a través del proxy inverso Nginx (RF10).\n\n**Cómo usarla**\n1. Levanta el proyecto: `docker compose up -d --build`.\n2. Importa esta colección y el entorno `EduPlan.postman_environment.json`.\n3. En Postman desactiva *Settings → General → SSL certificate verification* (el certificado de desarrollo es autofirmado). Las peticiones ya lo indican con `strictSSL: false`.\n4. Ejecuta la colección completa con **Run collection**: crea dos usuarios nuevos, prueba todo y al final borra lo que creó.\n\nCada petición tiene pruebas automáticas (pestaña *Tests*). Las respuestas sin IA deben tardar menos de 2 segundos (requerimiento de rendimiento).\nLas peticiones marcadas con **(IA)** llaman al modelo de lenguaje y pueden tardar hasta un minuto.\n\nSi la ejecutas más de unas 3 veces en un minuto, el login responde 429 (protección de Nginx contra fuerza bruta): espera un minuto.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"id": "788c446e-f419-44b7-ae8b-0a6bdb008f40",
+			"name": "0. Estado de los servicios (HU10)",
+			"description": {
+				"content": "Públicas: no requieren token.",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "0cb0ac06-1d83-480e-b375-afba95576329",
+					"name": "Estado de ms-auth",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"health"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "56b21cef-f082-4309-b64c-c662b8acb8eb",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Base de datos ok', () => pm.expect(pm.response.json().baseDatos).to.eql('ok'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "dbbb09cc-74c0-4e7e-b992-da4f413cc492",
+					"name": "Estado de ms-academico",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"health"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "925bbf8f-a4e6-493c-be83-b178b13156ff",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Base de datos ok', () => pm.expect(pm.response.json().baseDatos).to.eql('ok'));",
+									"pm.test('IA configurada', () => pm.expect(pm.response.json().ia.configurada).to.be.true);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "8d2baad2-c4ef-450d-9ea4-513afce2a201",
+					"name": "Documentación OpenAPI de ms-academico",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/docs.json",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"docs.json"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "cbb84545-f842-4435-98f1-f303c99a387d",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Es OpenAPI 3', () => pm.expect(pm.response.json().openapi).to.match(/^3\\./));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "a4b25a03-6b82-4ff7-99df-898459889f0c",
+			"name": "1. ms-auth · Autenticación (RF01, RF02, RF11)",
+			"description": {
+				"content": "Registro e inicio de sesión con correo, flujo de Google y validación del JWT.",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "eb127880-b0d8-4fb8-b645-caa04414e7f8",
+					"name": "Registrar estudiante nuevo",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/registro",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"registro"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"Estudiante de Prueba\",\n  \"email\": \"{{email}}\",\n  \"password\": \"Prueba2026\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"id": "7df0912d-7e1b-4c4d-9179-e1a0f6848454",
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set('email', `estudiante.${Date.now()}@ejemplo.com`);"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"id": "b42bdd94-0aca-416a-b441-3293b3ee735c",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('token', pm.response.json().token);",
+									"pm.test('Devuelve JWT y usuario', () => { const j = pm.response.json(); pm.expect(j.token.split('.')).to.have.length(3); pm.expect(j.usuario.email).to.eql(pm.collectionVariables.get('email')); });"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "28cc47d6-a33d-447e-b509-d750d90b9eda",
+					"name": "Registrar con contraseña débil (400)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/registro",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"registro"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"X\",\n  \"email\": \"no-es-correo\",\n  \"password\": \"corta\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "a4c2d576-60df-4f7d-b0bd-d4cce9cd3c53",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 400', () => pm.response.to.have.status(400));",
+									"pm.test('Código de error VALIDACION', () => pm.expect(pm.response.json().error.codigo).to.eql('VALIDACION'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "e05c70ea-f5aa-4fb0-97b5-72ab5109382d",
+					"name": "Registrar correo repetido (409)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/registro",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"registro"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"Otra\",\n  \"email\": \"{{email}}\",\n  \"password\": \"Prueba2026\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "f38c3f9b-b952-41aa-b87f-3b254c975d04",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 409', () => pm.response.to.have.status(409));",
+									"pm.test('Código de error EMAIL_REGISTRADO', () => pm.expect(pm.response.json().error.codigo).to.eql('EMAIL_REGISTRADO'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "58ebf973-f040-498a-99d1-8652aa6e9148",
+					"name": "Iniciar sesión con correo",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"Prueba2026\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "fda4f0ef-d476-417c-8e05-b75a53c125f2",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('token', pm.response.json().token);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "acbe35df-6258-4c94-9594-36a8f0058d80",
+					"name": "Contraseña incorrecta (401)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"Incorrecta99\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "5e1671d4-811d-4449-99d7-eddcb5336618",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 401', () => pm.response.to.have.status(401));",
+									"pm.test('Código de error CREDENCIALES_INVALIDAS', () => pm.expect(pm.response.json().error.codigo).to.eql('CREDENCIALES_INVALIDAS'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "16fa1e35-0a93-497a-a8f3-50d89d78e450",
+					"name": "Perfil del usuario del token",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"me"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "e23bf36b-7971-4555-86e2-70dc7fd0ca88",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Es el usuario del token', () => pm.expect(pm.response.json().usuario.email).to.eql(pm.collectionVariables.get('email')));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "71cf0ca2-9ed2-4035-a850-15eeefc69139",
+					"name": "Contenido del JWT (expiración)",
+					"request": {
+						"description": {
+							"content": "Decodifica el payload del token para comprobar emisor, audiencia y expiración (RF02).",
+							"type": "text/plain"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"me"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "c60a7e9a-08af-4059-97f2-21c983a16fef",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"const payload = JSON.parse(atob(pm.collectionVariables.get('token').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+									"pm.test('Tiene exp mayor a iat', () => pm.expect(payload.exp).to.be.above(payload.iat));",
+									"pm.test('Emisor y audiencia', () => { pm.expect(payload.iss).to.eql('eduplan-ms-auth'); pm.expect(payload.aud).to.eql('eduplan'); });"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "a0c22f71-2182-4b6c-b06f-155f3d0c974c",
+					"name": "Sin token (401)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"me"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "5c70c43b-cb6a-40db-9850-e3aa42c3dda3",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 401', () => pm.response.to.have.status(401));",
+									"pm.test('Código de error TOKEN_REQUERIDO', () => pm.expect(pm.response.json().error.codigo).to.eql('TOKEN_REQUERIDO'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "5947da5d-40f1-4bf3-8cf8-e2196a8121f2",
+					"name": "Token inválido (401)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"type": "string",
+									"value": "token.falso.123",
+									"key": "token"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "a992165d-cb1e-4bf2-8234-86ef6d7208e1",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 401', () => pm.response.to.have.status(401));",
+									"pm.test('Código de error TOKEN_INVALIDO', () => pm.expect(pm.response.json().error.codigo).to.eql('TOKEN_INVALIDO'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "72a6a9b9-e7b0-41fd-a5a2-0930b06765ec",
+					"name": "Iniciar sesión con Google (redirección)",
+					"request": {
+						"description": {
+							"content": "RF01: redirige a la pantalla de Google con state anti-CSRF. El flujo completo se prueba en el navegador.",
+							"type": "text/plain"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/google",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"google"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "4b5d6390-4b8d-4f96-9c61-defd506f384b",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 302', () => pm.response.to.have.status(302));",
+									"pm.test('Va a Google con redirect_uri y state', () => { const l = pm.response.headers.get('Location'); pm.expect(l).to.include('accounts.google.com'); pm.expect(l).to.include('state='); pm.expect(l).to.include('redirect_uri='); });",
+									"pm.test('Cookie de state HttpOnly y Secure', () => { const c = pm.response.headers.get('Set-Cookie') || ''; pm.expect(c).to.include('HttpOnly'); pm.expect(c).to.include('Secure'); });"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false,
+						"followRedirects": false
+					}
+				},
+				{
+					"id": "f547c197-4adc-4797-ae8e-30727b8d8bf5",
+					"name": "Registrar segundo estudiante (para RF09)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/registro",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"registro"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"Otro Estudiante\",\n  \"email\": \"otro.{{$timestamp}}{{$randomInt}}@ejemplo.com\",\n  \"password\": \"Prueba2026\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth",
+							"noauth": []
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "3ba770f2-a145-4200-8723-339e9d2ec473",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('otroToken', pm.response.json().token);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "4e46e343-6654-4f67-81e0-bc8871205463",
+			"name": "2. Semestres y materias (RF03)",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "f8b2965f-3a1f-43a3-9cac-3fcd9d8468c0",
+					"name": "Crear semestre",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/periodos",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"periodos"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"Semestre 2\",\n  \"tipo\": \"semestre\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "5a412fcf-2bcb-4f7b-85ce-8393dc0fa901",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('periodoId', pm.response.json().periodo.id);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "673eb147-f99c-4100-92db-3406a94aa499",
+					"name": "Listar semestres",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/periodos",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"periodos"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "f8ceeb58-9332-43f2-9647-f244ac05c8bd",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Tiene el semestre', () => pm.expect(pm.response.json().periodos).to.have.length(1));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "ab7f4e93-8bc6-4a9f-9bda-7661bb9baa47",
+					"name": "Crear materia",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"Base de Datos II\",\n  \"docente\": \"Ing. Andrea Morales\",\n  \"descripcion\": \"SQL avanzado\",\n  \"color\": \"#9333EA\",\n  \"periodoId\": \"{{periodoId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "9ed35bfd-bec3-45b1-8079-af9f8df989b9",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('materiaId', pm.response.json().materia.id);",
+									"pm.test('Quedó en el semestre', () => pm.expect(pm.response.json().materia.periodo).to.eql('Semestre 2'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "27f5ed70-1785-4169-a837-2af887bdbe0a",
+					"name": "Materia duplicada (409)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"base de datos ii\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "216269a0-3fb5-460d-90f4-142ecc9adf3c",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 409', () => pm.response.to.have.status(409));",
+									"pm.test('Código de error MATERIA_DUPLICADA', () => pm.expect(pm.response.json().error.codigo).to.eql('MATERIA_DUPLICADA'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "051b0f3e-99c0-4149-aa4d-0553b078805d",
+					"name": "Materia sin nombre (400)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"color\": \"rojo\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "27e9de4e-edea-41b7-9aec-83ef7396a2a0",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 400', () => pm.response.to.have.status(400));",
+									"pm.test('Código de error VALIDACION', () => pm.expect(pm.response.json().error.codigo).to.eql('VALIDACION'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "3e954e56-63b4-442c-9acf-9f359c27d23a",
+					"name": "Listar materias",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "8d8944e8-9293-4411-bf5a-99b954b52c5e",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Una materia', () => pm.expect(pm.response.json().materias).to.have.length(1));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "4f21c59f-b928-46df-b64a-cb14ccba5c56",
+					"name": "Obtener materia",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias/{{materiaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias",
+								"{{materiaId}}"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "e71049df-406f-4efb-95f7-605c9876f4ce",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "7e193233-ba7e-45d6-93aa-debdaaff1d43",
+					"name": "Editar materia",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias/{{materiaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias",
+								"{{materiaId}}"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "PUT",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"descripcion\": \"Modelado relacional y SQL avanzado\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "c9120857-01eb-463d-8782-7c5012ce0fe8",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Cambió solo la descripción', () => { const m = pm.response.json().materia; pm.expect(m.descripcion).to.include('Modelado'); pm.expect(m.nombre).to.eql('Base de Datos II'); });"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "676d2e00-c22c-4d72-8b2b-fe9591422c08",
+			"name": "3. Tareas (RF04, RF06, HU03, HU04, HU05)",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "83771195-1a16-4dcc-a0f3-769766c44413",
+					"name": "Crear tarea",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"materiaId\": \"{{materiaId}}\",\n  \"titulo\": \"Ejercicios de normalización\",\n  \"descripcion\": \"Hoja 3\",\n  \"fechaLimite\": \"{{en3dias}}\",\n  \"prioridad\": \"alta\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "f60c0720-8f29-434a-9728-965df499a6a2",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('tareaId', pm.response.json().tarea.id);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "28ec1e82-ef43-48ff-90f7-2f0d66ee2361",
+					"name": "Crear tarea vencida",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"materiaId\": \"{{materiaId}}\",\n  \"titulo\": \"Laboratorio de índices\",\n  \"fechaLimite\": \"{{haceDosDias}}\",\n  \"prioridad\": \"media\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "7b81c209-14b8-472a-aa54-362344158362",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('tarea2Id', pm.response.json().tarea.id);",
+									"pm.test('Marcada como vencida', () => pm.expect(pm.response.json().tarea.vencida).to.be.true);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "eaae2143-b0e2-4e83-90d6-ce71952e0e97",
+					"name": "Tarea con prioridad inválida (400)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"materiaId\": \"{{materiaId}}\",\n  \"titulo\": \"X\",\n  \"fechaLimite\": \"{{manana}}\",\n  \"prioridad\": \"urgente\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "ec75c370-a56f-43a7-b6da-8353f658ebd7",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 400', () => pm.response.to.have.status(400));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "dd7646a6-5d0b-4fad-952e-2695ec1ab427",
+					"name": "Listar tareas",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "af8f918a-9e69-462d-9b96-c07975c7b0a4",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Dos tareas', () => pm.expect(pm.response.json().tareas).to.have.length(2));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "33604fce-18ef-4fb8-b7c8-9a6bd33af36a",
+					"name": "Filtrar por materia",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas?materiaId={{materiaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							],
+							"query": [
+								{
+									"key": "materiaId",
+									"value": "{{materiaId}}"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "8a5e1805-b7bf-4ac0-a586-312273e6cddd",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Todas de la materia', () => pm.response.json().tareas.forEach((t) => pm.expect(t.materiaId).to.eql(pm.collectionVariables.get('materiaId'))));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "b8190d7d-5e22-4c9f-a7e8-9776e624422c",
+					"name": "Filtrar por estado y prioridad",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas?estado=pendiente&prioridad=alta",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							],
+							"query": [
+								{
+									"key": "estado",
+									"value": "pendiente"
+								},
+								{
+									"key": "prioridad",
+									"value": "alta"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "edd238f4-ce8d-4852-94c2-adbcb1732ab8",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Solo pendientes de prioridad alta', () => pm.response.json().tareas.forEach((t) => { pm.expect(t.estado).to.eql('pendiente'); pm.expect(t.prioridad).to.eql('alta'); }));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "be9700fe-7fab-4bf2-9798-b2644355ca2a",
+					"name": "Filtrar por rango de fechas",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas?desde={{hoy}}&hasta={{en7dias}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							],
+							"query": [
+								{
+									"key": "desde",
+									"value": "{{hoy}}"
+								},
+								{
+									"key": "hasta",
+									"value": "{{en7dias}}"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "69a8dabf-df61-4a09-884e-d78382e08f39",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Solo la de esta semana', () => pm.expect(pm.response.json().tareas).to.have.length(1));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "d3f64e4a-569c-449e-b759-a579b1cbb511",
+					"name": "Filtrar vencidas",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas?vencidas=true",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							],
+							"query": [
+								{
+									"key": "vencidas",
+									"value": "true"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "c6d2b6cc-8e90-4c7b-88ff-4eb98dee89ce",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Solo vencidas', () => pm.response.json().tareas.forEach((t) => pm.expect(t.vencida).to.be.true));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "fc4858c5-22b3-4ce2-b2cb-b0b9fab61ffb",
+					"name": "Editar tarea",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas/{{tareaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas",
+								"{{tareaId}}"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "PUT",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"descripcion\": \"Hoja 3, ejercicios 1 al 10\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "925670f5-7ec5-4c8a-a575-0c694c3eeaba",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "eb24af2c-b2d5-4c26-aba3-06c03db6e286",
+					"name": "Marcar como completada (HU04)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas/{{tareaId}}/estado",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas",
+								"{{tareaId}}",
+								"estado"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "PATCH",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"estado\": \"completada\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "656624d7-a784-4f05-93b9-c51dd3e7eaee",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Tiene fecha de completada', () => pm.expect(pm.response.json().tarea.completadaEn).to.be.a('string'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "c6c9042f-b0f8-4dc6-b3be-a3195e48bc37",
+					"name": "Editar tarea completada (409)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas/{{tareaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas",
+								"{{tareaId}}"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "PUT",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"titulo\": \"Cambio\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "bd238734-921c-4300-9fe3-8d6a91a71e89",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 409', () => pm.response.to.have.status(409));",
+									"pm.test('Código de error TAREA_COMPLETADA', () => pm.expect(pm.response.json().error.codigo).to.eql('TAREA_COMPLETADA'));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "1fd9bed0-02ed-42a9-9a90-dfc3260bef81",
+			"name": "4. Apuntes (RF05, HU06)",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "6473c9fb-ba9c-4e9d-b271-588a5a6de037",
+					"name": "Crear apunte",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"materiaId\": \"{{materiaId}}\",\n  \"titulo\": \"Formas normales\",\n  \"etiquetas\": [\n    \"parcial 2\",\n    \"sql\"\n  ],\n  \"contenido\": \"1FN: valores atómicos, sin grupos repetidos.\\n2FN: sin dependencias parciales de la llave compuesta.\\n3FN: sin dependencias transitivas entre atributos no llave.\\nUn índice acelera las búsquedas a cambio de espacio.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "6826b7c1-51bf-4ffc-91fc-81154dd840d3",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('apunteId', pm.response.json().apunte.id);",
+									"pm.test('Toma el semestre de la materia', () => pm.expect(pm.response.json().apunte.periodoId).to.eql(pm.collectionVariables.get('periodoId')));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "2057a6fe-400d-4465-9c06-7c24f5cd7c21",
+					"name": "Listar apuntes de la materia",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes?materiaId={{materiaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes"
+							],
+							"query": [
+								{
+									"key": "materiaId",
+									"value": "{{materiaId}}"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "61db0299-2696-410e-8f73-43f8719e3b0d",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "406f25e1-6dbc-4ec8-9896-25b5c7375688",
+					"name": "Buscar en apuntes y etiquetas",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes?buscar=parcial",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes"
+							],
+							"query": [
+								{
+									"key": "buscar",
+									"value": "parcial"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "7dce1f11-add2-461f-a60e-021df8576fbc",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Lo encuentra por etiqueta', () => pm.expect(pm.response.json().apuntes).to.have.length(1));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "3273eee0-c420-4919-9311-722d89d51571",
+					"name": "Marcar como favorito",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes/{{apunteId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes",
+								"{{apunteId}}"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "PUT",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"favorito\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "16bc6723-978e-455b-af33-51c6cf793201",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "db84cc36-3450-4000-9ab3-bbe5120d1dcb",
+					"name": "Ver favoritos",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes?vista=favoritos",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes"
+							],
+							"query": [
+								{
+									"key": "vista",
+									"value": "favoritos"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "a8670fe0-dfa8-418f-8089-867492cae1d6",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Un favorito', () => pm.expect(pm.response.json().apuntes).to.have.length(1));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "8f6e826b-c00b-439f-bf57-cbc80dcb1ca6",
+					"name": "Etiquetas usadas",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes/etiquetas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes",
+								"etiquetas"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "aad75ccc-7370-43e3-920d-43984afd70c2",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "9d772f11-4b8a-48b8-9f84-3671edcd9e6e",
+			"name": "5. Seguridad por usuario (RF09)",
+			"description": {
+				"content": "El segundo estudiante intenta ver o cambiar datos del primero. Debe recibir 404 (no se revela que el recurso existe).",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "fc64963d-623e-4dd8-8964-3690e57a56ed",
+					"name": "Otro usuario no ve la materia (404)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias/{{materiaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias",
+								"{{materiaId}}"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"type": "string",
+									"value": "{{otroToken}}",
+									"key": "token"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "908b1419-4b21-4056-bbc3-eb29f532ae59",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "ecf28eb0-134e-4e3b-8231-038d7420c6c6",
+					"name": "Otro usuario no ve el apunte (404)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes/{{apunteId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes",
+								"{{apunteId}}"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"type": "string",
+									"value": "{{otroToken}}",
+									"key": "token"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "a9cc616d-4668-42b0-8efb-9c747df407a7",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "57bdd97d-07cb-4c09-b41a-d1a100c711d4",
+					"name": "Otro usuario no edita la tarea (404)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas/{{tarea2Id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas",
+								"{{tarea2Id}}"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "PUT",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"titulo\": \"Hackeada\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"type": "string",
+									"value": "{{otroToken}}",
+									"key": "token"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "004778d3-ff11-4ff4-9545-7d0efc1b71ac",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "68876ad7-0b19-4a80-8193-04bd06389af5",
+					"name": "Otro usuario no crea tareas en la materia ajena (404)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"materiaId\": \"{{materiaId}}\",\n  \"titulo\": \"X\",\n  \"fechaLimite\": \"{{manana}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"type": "string",
+									"value": "{{otroToken}}",
+									"key": "token"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "0cfeab31-6457-49ba-8a07-5b3fe2e79fe8",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "b74f720c-d950-4447-a835-5cc23b2298c8",
+					"name": "Otro usuario solo ve sus materias",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias"
+							]
+						},
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"type": "string",
+									"value": "{{otroToken}}",
+									"key": "token"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "98421174-e312-42be-a5db-5137ee30045b",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Lista vacía', () => pm.expect(pm.response.json().materias).to.have.length(0));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "e9c04624-e549-4f22-9081-2fa341f77369",
+			"name": "6. Asistente de IA (RF07, RF08, HU07, HU08)",
+			"description": {
+				"content": "Las peticiones (IA) llaman al modelo configurado en AI_PROVIDER.",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "8f3877d7-03ab-4048-b7a9-f5306ce99fd0",
+					"name": "Resumir apunte (IA)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/ia/resumen/{{apunteId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"ia",
+								"resumen",
+								"{{apunteId}}"
+							]
+						},
+						"method": "POST"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "a5eb14ea-392d-4dbd-aee1-ebe8ca55439e",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Tiene resumen', () => pm.expect(pm.response.json().apunte.resumenIa).to.be.a('string').and.not.empty);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "94f98816-5810-4aee-aefa-ab8321fdec01",
+					"name": "Crear examen",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/examenes",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"examenes"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"materiaId\": \"{{materiaId}}\",\n  \"titulo\": \"Segundo parcial\",\n  \"fecha\": \"{{en7dias}}\",\n  \"temas\": \"Normalización\\nÍndices\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "2e8d2ba0-ca61-42db-b9af-f1ac5d606b72",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('examenId', pm.response.json().examen.id);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "8e0a37d2-7763-438e-8b7e-4bcf4aee2c9b",
+					"name": "Contexto que usará la IA",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/contexto?examenId={{examenId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"contexto"
+							],
+							"query": [
+								{
+									"key": "examenId",
+									"value": "{{examenId}}"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "a22078ba-24f8-43f1-9ac3-c46cc2b07d22",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Trae temas del examen y apuntes', () => { const c = pm.response.json().contexto; pm.expect(c.examen.temas).to.have.length(2); pm.expect(c.apuntes).to.have.length(1); });"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "2b165bc0-0cbd-48cf-be68-2b69d0b914a6",
+					"name": "Vista previa de plan de estudio (IA)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/planes/vista-previa",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"planes",
+								"vista-previa"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alcance\": \"materia\",\n  \"materiaId\": \"{{materiaId}}\",\n  \"dias\": 5,\n  \"horasPorDia\": 2,\n  \"horaInicio\": \"18:00\",\n  \"prioridad\": \"alta\",\n  \"temasPrioridad\": \"Normalización\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "6cb31c79-12a1-4cdc-934a-14e9539338cb",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Propuesta por días', () => pm.expect(pm.response.json().propuesta.dias).to.be.an('array').that.is.not.empty);",
+									"pm.collectionVariables.set('propuesta', JSON.stringify(pm.response.json().propuesta));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "651de13a-fb69-4d0b-b772-56582c4c3d27",
+					"name": "Guardar plan aprobado",
+					"request": {
+						"description": {
+							"content": "Guarda la vista previa sin volver a llamar a la IA.",
+							"type": "text/plain"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/planes",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"planes"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"id": "1b01069e-3842-4380-82e0-0d3e5122cfc1",
+								"type": "text/javascript",
+								"exec": [
+									"const p = JSON.parse(pm.collectionVariables.get('propuesta') || '{}');",
+									"pm.request.body.raw = JSON.stringify({ alcance: 'materia', materiaId: pm.collectionVariables.get('materiaId'), dias: 5, horasPorDia: 2, prioridad: 'alta', propuesta: p });"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"id": "c7aebfcb-38e5-4f31-b463-510244758c28",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('planId', pm.response.json().plan.id);",
+									"const act = pm.response.json().plan.actividades.find((a) => a.tipo !== 'descanso');",
+									"if (act) pm.collectionVariables.set('actividadId', act.id);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "2c48957c-ff5d-476b-bd30-99a81aa6eaa8",
+					"name": "Plan con todas las tareas pendientes (IA)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/planes",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"planes"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alcance\": \"general\",\n  \"dias\": 7,\n  \"horasPorDia\": 2,\n  \"horaInicio\": \"18:00\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "60c4b882-bb65-4238-9e3a-058aabb01c9f",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"pm.test('Incluye la tarea pendiente', () => pm.expect(pm.response.json().plan.tareasIncluidas).to.include(pm.collectionVariables.get('tarea2Id')));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "a526082f-156c-4fbe-b9ca-259176ea516a",
+					"name": "Marcar actividad del plan como hecha",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/planes/{{planId}}/actividades/{{actividadId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"planes",
+								"{{planId}}",
+								"actividades",
+								"{{actividadId}}"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "PATCH",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"completada\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "361bfe64-eda5-4966-9e8a-2db690fdbc03",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "5b098163-9f63-45fa-9640-7f06787cf642",
+					"name": "Historial de planes",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/planes",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"planes"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "eee5f0aa-815c-48c3-a055-7d2a3a10f6ba",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Dos planes', () => pm.expect(pm.response.json().planes).to.have.length(2));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "d110f4e7-2914-4a19-a4a3-0205240107bf",
+					"name": "Generar cuestionario (IA)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/cuestionarios",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cuestionarios"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fuente\": \"examen\",\n  \"examenId\": \"{{examenId}}\",\n  \"numPreguntas\": 3,\n  \"dificultad\": \"media\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "e5140262-339d-4092-a2dd-14f625cba26c",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('cuestionarioId', pm.response.json().cuestionario.id);",
+									"pm.test('No envía la respuesta correcta', () => pm.response.json().cuestionario.preguntas.forEach((p) => pm.expect(p.correcta).to.be.undefined));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "b7cf0d2c-024b-4042-8b9c-2fba5cd90757",
+					"name": "Responder cuestionario",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/cuestionarios/{{cuestionarioId}}/intentos",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cuestionarios",
+								"{{cuestionarioId}}",
+								"intentos"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"respuestas\": [\n    0,\n    0,\n    0\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "21d58af2-19ad-46c2-97c4-3253947224dc",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"pm.test('Califica en el servidor y explica', () => { const j = pm.response.json(); pm.expect(j.intento.puntaje).to.be.within(0, 100); pm.expect(j.revision[0].explicacion).to.be.a('string'); pm.expect(j.analisis).to.have.property('temas'); });"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "d0ecc4c1-d812-4e66-8e07-9b1ca3094366",
+					"name": "Tarjetas de las preguntas falladas",
+					"request": {
+						"description": {
+							"content": "Responde 422 SIN_FALLADAS si se acertaron todas.",
+							"type": "text/plain"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/cuestionarios/{{cuestionarioId}}/tarjetas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cuestionarios",
+								"{{cuestionarioId}}",
+								"tarjetas"
+							]
+						},
+						"method": "POST"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "ce1c2c66-666b-4259-831f-a3d43a0fcad1",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201 o 422', () => pm.expect([201, 422]).to.include(pm.response.code));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "06956453-8ab8-4061-9033-0e6a2b89d0ad",
+			"name": "7. Tarjetas de memoria y agenda",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "fe12afcb-a83c-4ad1-b432-0e8a87b58c6e",
+					"name": "Crear tarjeta",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/flashcards",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"flashcards"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"materiaId\": \"{{materiaId}}\",\n  \"frente\": \"¿Qué elimina la 3FN?\",\n  \"reverso\": \"Las dependencias transitivas entre atributos no llave.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "9bd3c3d1-7083-4a0c-9f60-33e155a631fe",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 201', () => pm.response.to.have.status(201));",
+									"if (pm.response.code < 300) pm.collectionVariables.set('tarjetaId', pm.response.json().tarjeta.id);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "4a03cb49-9e7f-4b05-8afc-bf7aa4b12181",
+					"name": "Tarjetas para repasar hoy",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/flashcards?pendientes=true",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"flashcards"
+							],
+							"query": [
+								{
+									"key": "pendientes",
+									"value": "true"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "a0bcf63f-10ed-4c6f-8738-95d2805efc59",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "106275f3-8351-4f3e-b098-a122d9bf8d52",
+					"name": "Repasar tarjeta: Fácil",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/flashcards/{{tarjetaId}}/repaso",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"flashcards",
+								"{{tarjetaId}}",
+								"repaso"
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"calificacion\": \"facil\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "de3abe55-8b58-4c57-ad32-dfda6ac0b338",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Vuelve en 2 días', () => pm.expect(pm.response.json().tarjeta.intervaloDias).to.eql(2));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "92c19158-24e0-4b7f-b630-d989a3d6a0b7",
+					"name": "Alertas",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/alertas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"alertas"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "66399e57-b5cf-47a1-8778-78045e158916",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));",
+									"pm.test('Avisa la tarea vencida (urgente)', () => pm.expect(pm.response.json().alertas.some((a) => a.nivel === 'urgente' && a.titulo.includes('1 tarea vencida'))).to.be.true);"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "7b680683-3876-4da7-bd09-58eca4f026f5",
+					"name": "Calendario del mes",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/calendario?desde={{hoy}}&hasta={{en30dias}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"calendario"
+							],
+							"query": [
+								{
+									"key": "desde",
+									"value": "{{hoy}}"
+								},
+								{
+									"key": "hasta",
+									"value": "{{en30dias}}"
+								}
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "f92a4d82-56ae-4993-9fba-83ae0617d4a2",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "9e8416f2-4989-4f93-ad13-4f20382ed105",
+					"name": "Resumen para el panel",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/resumen",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"resumen"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "49e69f4b-56b9-488c-a234-33d160836f6d",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		},
+		{
+			"id": "05574fa6-5689-416a-8fcc-d9ed5e4081ba",
+			"name": "8. Limpieza y cierre de sesión",
+			"description": {
+				"content": "Borra lo creado por la colección.",
+				"type": "text/plain"
+			},
+			"item": [
+				{
+					"id": "9c44705d-7097-4a96-8212-8b71b44d800a",
+					"name": "Eliminar tarea completada",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas/{{tareaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas",
+								"{{tareaId}}"
+							]
+						},
+						"method": "DELETE"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "b8311d60-f8ff-4e54-8f61-9f10c6b1c9d0",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "0e136ed5-c0a3-42f9-9000-f8523540ca73",
+					"name": "Eliminar apunte",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/apuntes/{{apunteId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"apuntes",
+								"{{apunteId}}"
+							]
+						},
+						"method": "DELETE"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "62480c57-9bdb-4298-8971-8d5562c1712f",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "e4251a08-3210-4bc2-9907-e7604b8bfcaf",
+					"name": "Eliminar materia (en cascada)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/materias/{{materiaId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"materias",
+								"{{materiaId}}"
+							]
+						},
+						"method": "DELETE"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "3063283b-c290-4ea1-9311-957f6108dd4f",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "1a5e5847-5693-4b40-9521-15e3fd92ec8e",
+					"name": "La tarea se borró en cascada (404)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/tareas/{{tarea2Id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tareas",
+								"{{tarea2Id}}"
+							]
+						},
+						"method": "GET"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "793cd4a9-530f-417b-939d-645b52c45769",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "80d97165-1028-4bec-9f4b-cf8d45aca5f6",
+					"name": "Eliminar semestre",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/api/periodos/{{periodoId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"periodos",
+								"{{periodoId}}"
+							]
+						},
+						"method": "DELETE"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "0a069651-9672-4c5f-ae77-460a57106a28",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				},
+				{
+					"id": "c57dbce2-8aa7-468c-bb73-83d0abf1b72f",
+					"name": "Cerrar sesión (RF11)",
+					"request": {
+						"url": {
+							"raw": "{{baseUrl}}/auth/logout",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"logout"
+							]
+						},
+						"method": "POST"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "17050a87-994a-4a58-b547-78afcb9af7ce",
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Responde 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"strictSSL": false
+					}
+				}
+			],
+			"event": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"type": "string",
+				"value": "{{token}}",
+				"key": "token"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "f132d890-0c51-4b3b-a166-076c3673ed04",
+				"type": "text/javascript",
+				"exec": [
+					"// Fechas relativas a hoy en la hora LOCAL (YYYY-MM-DD) para que la colección funcione cualquier día",
+					"const dia = (n) => { const d = new Date(Date.now() + n * 86400000); const p = (x) => String(x).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };",
+					"pm.collectionVariables.set('hoy', dia(0));",
+					"pm.collectionVariables.set('manana', dia(1));",
+					"pm.collectionVariables.set('en3dias', dia(3));",
+					"pm.collectionVariables.set('en7dias', dia(7));",
+					"pm.collectionVariables.set('en30dias', dia(30));",
+					"pm.collectionVariables.set('haceDosDias', dia(-2));"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "3ccff3d5-0864-472a-a637-143f738cb5d5",
+				"type": "text/javascript",
+				"exec": [
+					"// Requerimiento no funcional: menos de 2 segundos sin contar la IA",
+					"if (!pm.info.requestName.includes('(IA)')) {",
+					"  pm.test('Responde en menos de 2 segundos', () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"type": "any",
+			"value": "",
+			"key": "token"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "otroToken"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "email"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "periodoId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "materiaId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "tareaId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "tarea2Id"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "apunteId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "examenId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "planId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "actividadId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "cuestionarioId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "tarjetaId"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "hoy"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "manana"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "en3dias"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "en7dias"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "en30dias"
+		},
+		{
+			"type": "any",
+			"value": "",
+			"key": "haceDosDias"
+		}
+	]
+}
