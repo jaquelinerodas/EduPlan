@@ -89,6 +89,7 @@ module.exports = {
           docente: { type: 'string', example: 'Ing. Andrea Morales' },
           descripcion: { type: 'string', example: 'Microservicios y Docker' },
           color: { type: 'string', example: '#2563EB' },
+          periodoId: { type: 'string', format: 'uuid', nullable: true, description: 'Semestre o bloque' },
         },
       },
       Materia: {
@@ -99,6 +100,7 @@ module.exports = {
           totalTareas: { type: 'integer' }, pendientes: { type: 'integer' }, enProgreso: { type: 'integer' },
           completadas: { type: 'integer' }, vencidas: { type: 'integer' },
           proximaEntrega: { type: 'string', format: 'date-time', nullable: true },
+          periodoId: { type: 'string', nullable: true }, periodo: { type: 'string', nullable: true },
           creadoEn: { type: 'string', format: 'date-time' }, actualizadoEn: { type: 'string', format: 'date-time' },
         },
       },
@@ -132,6 +134,9 @@ module.exports = {
           materiaId: { type: 'string', format: 'uuid' },
           titulo: { type: 'string', maxLength: 200, example: 'Qué es un proxy inverso' },
           contenido: { type: 'string', example: 'Nginx recibe las peticiones y las reenvía al servicio interno según la ruta...' },
+          periodoId: { type: 'string', format: 'uuid', nullable: true, description: 'Si no se envía, se usa el semestre de la materia' },
+          favorito: { type: 'boolean' },
+          etiquetas: { type: 'array', items: { type: 'string', maxLength: 30 }, maxItems: 10, example: ['parcial 2', 'sql'] },
         },
       },
       Apunte: {
@@ -139,6 +144,9 @@ module.exports = {
         properties: {
           id: { type: 'string', format: 'uuid' }, titulo: { type: 'string' }, contenido: { type: 'string' },
           resumenIa: { type: 'string', nullable: true }, resumenGeneradoEn: { type: 'string', format: 'date-time', nullable: true },
+          periodoId: { type: 'string', nullable: true }, periodo: { type: 'string', nullable: true },
+          favorito: { type: 'boolean' }, etiquetas: { type: 'array', items: { type: 'string' } },
+          tarjetasPendientes: { type: 'integer' }, recomendado: { type: 'boolean', description: 'Recomendado por el último intento de un cuestionario' },
           materiaId: { type: 'string', format: 'uuid' }, materia: { type: 'string' }, materiaColor: { type: 'string' },
           creadoEn: { type: 'string', format: 'date-time' }, actualizadoEn: { type: 'string', format: 'date-time' },
         },
@@ -167,8 +175,13 @@ module.exports = {
         properties: {
           alcance: { type: 'string', enum: ['general', 'materia', 'apuntes', 'examen'], default: 'general' },
           materiaId: { type: 'string', format: 'uuid' },
-          apunteIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 10 },
+          apunteIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 15, description: 'Con materia o examen: subconjunto de sus apuntes' },
           examenId: { type: 'string', format: 'uuid' },
+          periodoId: { type: 'string', format: 'uuid', description: 'Usar solo apuntes de este semestre o bloque' },
+          temas: { type: 'array', items: { type: 'string' }, description: 'Temas del examen que entran' },
+          temasPrioridad: { type: 'string', example: 'Procedimientos almacenados y triggers' },
+          prioridad: { type: 'string', enum: ['baja', 'media', 'alta'], default: 'media' },
+          propuesta: { type: 'object', description: 'Vista previa aprobada (y editada): { titulo, resumen, consejos, dias }. Si se envía, no se llama a la IA' },
           dias: { type: 'integer', minimum: 1, maximum: 30, default: 7 },
           horasPorDia: { type: 'integer', minimum: 1, maximum: 8, default: 3 },
           horaInicio: { type: 'string', example: '18:00', default: '18:00' },
@@ -204,6 +217,8 @@ module.exports = {
           apunteIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
           materiaId: { type: 'string', format: 'uuid' },
           examenId: { type: 'string', format: 'uuid' },
+          periodoId: { type: 'string', format: 'uuid' },
+          temas: { type: 'array', items: { type: 'string' }, maxItems: 20 },
           numPreguntas: { type: 'integer', minimum: 3, maximum: 20, default: 10 },
           dificultad: { type: 'string', enum: ['facil', 'media', 'dificil'], default: 'media' },
         },
@@ -244,7 +259,7 @@ module.exports = {
         type: 'object',
         properties: {
           id: { type: 'string', format: 'uuid' }, titulo: { type: 'string' },
-          alcance: { type: 'string', enum: ['general', 'materia', 'apuntes', 'examen'] },
+          alcance: { type: 'string', enum: ['general', 'materia', 'apuntes', 'examen', 'cuestionario'] },
           fechaInicio: { type: 'string', format: 'date' }, fechaFin: { type: 'string', format: 'date' },
           resumen: { type: 'string' }, consejos: { type: 'array', items: { type: 'string' } },
           totalActividades: { type: 'integer' }, completadas: { type: 'integer' }, atrasadas: { type: 'integer' },
@@ -296,6 +311,30 @@ module.exports = {
         query('buscar', { type: 'string' }, 'Buscar en título y contenido'),
       ],
     }),
+    '/api/apuntes/etiquetas': {
+      get: { tags: ['Apuntes'], summary: 'Etiquetas usadas y cuántos apuntes tiene cada una', security: seguro, responses: { 200: { description: 'OK' }, 401: ERRORES[401] } },
+    },
+    '/api/periodos': {
+      get: { tags: ['Apuntes'], summary: 'Semestres, bloques y carpetas con sus conteos', security: seguro, responses: { 200: { description: 'OK' }, 401: ERRORES[401] } },
+      post: {
+        tags: ['Apuntes'], summary: 'Crear semestre, bloque o carpeta', security: seguro,
+        requestBody: { required: true, ...json({ type: 'object', required: ['nombre'], properties: { nombre: { type: 'string', example: 'Semestre 2' }, tipo: { type: 'string', enum: ['semestre', 'bloque', 'carpeta'] }, orden: { type: 'integer' } } }) },
+        responses: { 201: { description: 'Creado' }, 409: err('Ya existe uno con ese nombre'), ...ERRORES },
+      },
+    },
+    '/api/periodos/{id}': {
+      parameters: [idParam()],
+      put: { tags: ['Apuntes'], summary: 'Renombrar o cambiar tipo', security: seguro, responses: { 200: { description: 'OK' }, ...ERRORES } },
+      delete: { tags: ['Apuntes'], summary: 'Eliminar (sus materias y apuntes quedan sin semestre)', security: seguro, responses: { 204: { description: 'Eliminado' }, ...ERRORES } },
+    },
+    '/api/contexto': {
+      get: {
+        tags: ['General'], summary: 'Lo que la IA tomará en cuenta para una materia o examen', security: seguro,
+        description: 'Apuntes (con semestre), temas del examen, tareas pendientes, exámenes próximos, temas débiles y tarjetas por repasar.',
+        parameters: [query('materiaId', { type: 'string', format: 'uuid' }), query('examenId', { type: 'string', format: 'uuid' }), query('dias', { type: 'integer' })],
+        responses: { 200: { description: 'OK' }, ...ERRORES },
+      },
+    },
     '/api/ia/resumen/{apunteId}': {
       post: {
         tags: ['Asistente IA'], summary: 'Resumir un apunte con IA (RF07)', security: seguro,
@@ -330,6 +369,13 @@ module.exports = {
           422: err('No hay contenido que planificar (SIN_TAREAS_PENDIENTES, SIN_CONTENIDO, EXAMEN_PASADO)'),
           429: err('Límite de solicitudes a la IA'), 502: err('Error de la API de IA'), 503: err('IA no configurada'),
         },
+      },
+    },
+    '/api/planes/vista-previa': {
+      post: {
+        tags: ['Plan de estudio'], summary: 'Vista previa del plan generada por IA (no se guarda)', security: seguro,
+        requestBody: { required: true, ...json(ref('PlanEntrada')) },
+        responses: { 200: { description: '{ propuesta: { titulo, resumen, consejos, dias } }' }, 422: err('Sin contenido para planificar'), ...ERRORES },
       },
     },
     '/api/planes/{id}': {
@@ -393,6 +439,19 @@ module.exports = {
         tags: ['Cuestionarios'], summary: 'Responder y calificar', security: seguro,
         requestBody: { required: true, ...json({ type: 'object', required: ['respuestas'], properties: { respuestas: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 3, nullable: true }, example: [1, 0, 3, 2, 1] } } }) },
         responses: { 201: { description: 'Calificación y revisión de cada pregunta', ...json(ref('Resultado')) }, ...ERRORES },
+      },
+    },
+    '/api/cuestionarios/{id}/tarjetas': {
+      parameters: [idParam()],
+      post: { tags: ['Cuestionarios'], summary: 'Crear tarjetas de memoria con las preguntas falladas del último intento (no duplica)', security: seguro, responses: { 201: { description: '{ creadas, omitidas, tarjetas }' }, 422: err('Sin intentos o sin preguntas falladas'), ...ERRORES } },
+    },
+    '/api/cuestionarios/{id}/repaso': {
+      parameters: [idParam()],
+      get: { tags: ['Cuestionarios'], summary: 'Proponer fecha, hora y duración para una sesión de repaso (no guarda)', security: seguro, responses: { 200: { description: 'Sugerencia' }, ...ERRORES } },
+      post: {
+        tags: ['Cuestionarios'], summary: 'Agregar la sesión de repaso al plan de ese día (o crear un plan de repaso)', security: seguro,
+        requestBody: { required: true, ...json({ type: 'object', required: ['fecha', 'inicio', 'duracion'], properties: { fecha: { type: 'string', format: 'date' }, inicio: { type: 'string', example: '19:00' }, duracion: { type: 'integer', minimum: 15, maximum: 180 } } }) },
+        responses: { 201: { description: '{ plan, nuevo }' }, ...ERRORES },
       },
     },
     '/api/cuestionarios/{id}/revision': {

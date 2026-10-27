@@ -13,6 +13,8 @@ const tareaModel = require('../src/models/tarea.model');
 const apunteModel = require('../src/models/apunte.model');
 const planModel = require('../src/models/plan.model');
 const cuestionarioModel = require('../src/models/cuestionario.model');
+const flashcardModel = require('../src/models/flashcard.model');
+const contexto = require('../src/services/ia/contexto');
 const fechas = require('../src/utils/fechas');
 const limiteIa = require('../src/middlewares/limiteIa');
 
@@ -172,6 +174,13 @@ test('resumen: si Gemini rechaza la clave responde 502 IA_CLAVE_INVALIDA', async
   assert.equal((await r.json()).error.codigo, 'IA_CLAVE_INVALIDA');
 });
 
+/** Exámenes, temas débiles y tarjetas: vacíos (no hay base de datos en las pruebas). */
+function sinContextoExtra(t) {
+  t.mock.method(contexto, 'examenesProximos', async () => []);
+  t.mock.method(contexto, 'temasDebiles', async () => []);
+  t.mock.method(contexto, 'tarjetasPendientes', async () => ({ total: 0, apuntes: [] }));
+}
+
 test('plan: sin tareas pendientes responde 422', async (t) => {
   t.mock.method(tareaModel, 'pendientesParaPlan', async () => []);
   const r = await pedir('/api/planes', { metodo: 'POST', cuerpo: {} });
@@ -184,6 +193,7 @@ test('plan: pide JSON a Gemini, valida las actividades y guarda el plan', async 
   t.mock.method(tareaModel, 'pendientesParaPlan', async () => [
     { id: TAREA, titulo: 'Árbol AVL', materia: 'Programación', materiaId: MATERIA_ID, prioridad: 'alta', estado: 'pendiente', vencida: false, fechaLimite: new Date(Date.now() + 3 * 86400000) },
   ]);
+  sinContextoExtra(t);
   const crear = t.mock.method(planModel, 'crear', async (_u, datos) => ({ id: 'p1', ...datos }));
   const respuestaIa = {
     titulo: 'Semana de AVL',
@@ -242,12 +252,99 @@ test('cuestionario: califica en el servidor y devuelve los temas débiles', asyn
     ],
   }));
   const crear = t.mock.method(cuestionarioModel, 'crearIntento', async (_u, _id, i) => ({ ...i }));
+  t.mock.method(cuestionarioModel, 'ultimoIntento', async () => ({ puntaje: 0, temasDebiles: ['Índices', '3FN'], creadoEn: new Date() }));
+  t.mock.method(cuestionarioModel, 'apuntesBasicos', async () => []);
+  t.mock.method(cuestionarioModel, 'tarjetasCreadas', async () => []);
   const r = await pedir(`/api/cuestionarios/${MATERIA_ID}/intentos`, { metodo: 'POST', cuerpo: { respuestas: [1, 0] } });
   assert.equal(r.status, 201);
   const intento = crear.mock.calls[0].arguments[2];
   assert.equal(intento.correctas, 1);
   assert.equal(intento.puntaje, 50);
   assert.deepEqual(intento.temasDebiles, ['3FN']);
+  const { analisis } = await r.json();
+  assert.deepEqual(analisis.comparacion.mejoraron, ['Índices']);   // falló Índices antes y ahora no
+  assert.deepEqual(analisis.comparacion.siguenDebiles, ['3FN']);
+  assert.equal(analisis.falladasSinTarjeta, 1);
+});
+
+const APUNTE_A = 'b0000000-0000-0000-0000-00000000000a';
+const PREGUNTAS_FALLADAS = [
+  { pregunta: '¿Qué es 2FN?', opciones: ['A', 'B', 'C', 'D'], correcta: 1, explicacion: 'Sin dependencias parciales.', tema: '2FN', apunteId: APUNTE_A },
+  { pregunta: '¿Qué es un índice?', opciones: ['A', 'B', 'C', 'D'], correcta: 0, explicacion: 'Acelera búsquedas.', tema: 'Índices', apunteId: null },
+  { pregunta: '¿Qué es 3FN?', opciones: ['A', 'B', 'C', 'D'], correcta: 2, explicacion: 'Sin transitivas.', tema: '3FN', apunteId: APUNTE_A },
+];
+
+test('cuestionario: crea tarjetas solo de las preguntas falladas y no repite las existentes', async (t) => {
+  t.mock.method(cuestionarioModel, 'obtener', async () => ({ id: 'q1', materiaId: MATERIA_ID, preguntas: PREGUNTAS_FALLADAS }));
+  t.mock.method(cuestionarioModel, 'ultimoIntento', async () => ({ respuestas: [0, 0, 0] })); // falla la 1 y la 3
+  t.mock.method(cuestionarioModel, 'tarjetasCreadas', async () => ['¿qué es 3fn?']);
+  t.mock.method(cuestionarioModel, 'apuntesBasicos', async () => [{ id: APUNTE_A, titulo: 'Normalización', materiaId: MATERIA_ID }]);
+  const crear = t.mock.method(flashcardModel, 'crearVarias', async (_u, _m, _a, lista) => lista);
+
+  const r = await pedir(`/api/cuestionarios/${MATERIA_ID}/tarjetas`, { metodo: 'POST' });
+  assert.equal(r.status, 201);
+  const cuerpo = await r.json();
+  assert.equal(cuerpo.creadas, 1);
+  assert.equal(cuerpo.omitidas, 1);
+  const [tarjeta] = crear.mock.calls[0].arguments[3];
+  assert.equal(tarjeta.frente, '¿Qué es 2FN?');
+  assert.match(tarjeta.reverso, /^B\n\nSin dependencias parciales\.$/);
+  assert.equal(tarjeta.apunteId, APUNTE_A);
+  assert.equal(tarjeta.cuestionarioId, 'q1');
+});
+
+test('cuestionario: programa una sesión de repaso en el plan que cubre esa fecha', async (t) => {
+  t.mock.method(cuestionarioModel, 'obtener', async () => ({ id: 'q1', titulo: 'Parcial', materiaId: MATERIA_ID, preguntas: PREGUNTAS_FALLADAS }));
+  t.mock.method(cuestionarioModel, 'ultimoIntento', async () => ({ respuestas: [0, 0, 0], puntaje: 33.33 }));
+  t.mock.method(cuestionarioModel, 'apuntesBasicos', async () => [{ id: APUNTE_A, titulo: 'Normalización', materiaId: MATERIA_ID }]);
+  t.mock.method(planModel, 'planEnFecha', async () => ({ id: 'p9', titulo: 'Semana' }));
+  const agregar = t.mock.method(planModel, 'agregarActividad', async (id) => ({ id }));
+  const fecha = fechas.sumarDias(fechas.hoy(), 1);
+
+  const r = await pedir(`/api/cuestionarios/${MATERIA_ID}/repaso`, { metodo: 'POST', cuerpo: { fecha, inicio: '19:00', duracion: 45 } });
+  assert.equal(r.status, 201);
+  assert.equal((await r.json()).nuevo, false);
+  const act = agregar.mock.calls[0].arguments[2];
+  assert.equal(act.tipo, 'repaso');
+  assert.equal(act.fin, '19:45');
+  assert.match(act.titulo, /2FN, 3FN/);
+  assert.match(act.descripcion, /Normalización/);
+
+  const pasada = await pedir(`/api/cuestionarios/${MATERIA_ID}/repaso`, { metodo: 'POST', cuerpo: { fecha: '2020-01-01', inicio: '19:00', duracion: 45 } });
+  assert.equal(pasada.status, 400);
+});
+
+test('plan: la vista previa no guarda nada y la propuesta aprobada se valida sin llamar a la IA', async (t) => {
+  const TAREA = 'c0000000-0000-0000-0000-000000000002';
+  const hoy = fechas.hoy();
+  t.mock.method(tareaModel, 'pendientesParaPlan', async () => [
+    { id: TAREA, titulo: 'Informe', materia: 'Web', materiaId: MATERIA_ID, prioridad: 'media', estado: 'pendiente', vencida: false, fechaLimite: new Date(Date.now() + 2 * 86400000) },
+  ]);
+  sinContextoExtra(t);
+  const crear = t.mock.method(planModel, 'crear', async (_u, datos) => ({ id: 'p2', ...datos }));
+  const dias = [{ fecha: hoy, actividades: [{ inicio: '18:00', fin: '18:45', tipo: 'tarea', titulo: 'Informe', tareaId: TAREA }] }];
+  const llamadas = simularGemini(t, { candidates: [{ content: { parts: [{ text: JSON.stringify({ titulo: 'Plan', resumen: 'R', dias }) }] } }] });
+
+  const previa = await pedir('/api/planes/vista-previa', { metodo: 'POST', cuerpo: { dias: 3, prioridad: 'alta', temasPrioridad: 'Rotaciones' } });
+  assert.equal(previa.status, 200);
+  const { propuesta } = await previa.json();
+  assert.equal(propuesta.dias[0].actividades[0].tareaId, TAREA);
+  assert.equal(crear.mock.callCount(), 0);
+  const mensaje = JSON.parse(llamadas[0].opciones.body).contents[0].parts[0].text;
+  assert.match(mensaje, /PRIORIZAR.*Rotaciones/);
+  assert.match(mensaje, /ritmo intenso/);
+
+  // El estudiante edita el título, borra nada y agrega una actividad con un id ajeno
+  propuesta.titulo = 'Mi plan editado';
+  propuesta.dias[0].actividades.push({ inicio: '19:00', fin: '19:30', tipo: 'repaso', titulo: 'Extra', tareaId: 'c0000000-0000-0000-0000-0000000000ff' });
+  const r = await pedir('/api/planes', { metodo: 'POST', cuerpo: { dias: 3, propuesta } });
+  assert.equal(r.status, 201);
+  assert.equal(llamadas.length, 1);                   // no se volvió a llamar a la IA
+  const datos = crear.mock.calls[0].arguments[1];
+  assert.equal(datos.titulo, 'Mi plan editado');
+  assert.equal(datos.actividades.length, 2);
+  assert.equal(datos.actividades[1].tareaId, null);   // id que no es del estudiante -> null
+  assert.equal(datos.prioridad, 'media');
 });
 
 // ---------- General ----------

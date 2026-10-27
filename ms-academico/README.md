@@ -28,9 +28,23 @@ Todas las rutas, excepto `health` y `docs`, requieren `Authorization: Bearer <JW
 ### Apuntes — RF05, RF07, HU06, HU07
 | Método | Ruta | Descripción |
 |---|---|---|
-| GET | `/api/apuntes` | Filtros `materiaId` y `buscar` |
-| POST · GET · PUT · DELETE | `/api/apuntes` · `/api/apuntes/:id` | CRUD. Si cambia el contenido, se borra el resumen anterior |
+| GET | `/api/apuntes` | Filtros `materiaId`, `periodoId` (o `ninguno`), `buscar` (título, contenido y etiquetas), `etiqueta` y `vista` (`todos`, `recientes`, `favoritos`, `repasar`). Cada apunte trae `periodo`, `favorito`, `etiquetas`, `tarjetasPendientes` y `recomendado` |
+| POST · GET · PUT · DELETE | `/api/apuntes` · `/api/apuntes/:id` | CRUD (`periodoId`, `favorito`, `etiquetas` hasta 10). Si no se envía semestre, toma el de la materia. Si cambia el contenido, se borra el resumen anterior |
+| GET | `/api/apuntes/etiquetas` | Etiquetas usadas con su conteo |
 | POST | `/api/ia/resumen/:apunteId` | Resume el apunte con IA y guarda el resultado |
+
+### Semestres, bloques y carpetas
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET · POST | `/api/periodos` | Lista con conteo de materias y apuntes · Crear (`nombre`, `tipo`: `semestre`, `bloque` o `carpeta`) |
+| PUT · DELETE | `/api/periodos/:id` | Renombrar · Eliminar (materias y apuntes quedan sin semestre, no se borran) |
+
+Las materias también aceptan `periodoId`.
+
+### Contexto de estudio
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/contexto?materiaId=` o `?examenId=` | Apuntes con su semestre, temas del examen, tareas pendientes, exámenes próximos, temas débiles y tarjetas por repasar. El frontend lo muestra como "EduPlan tomará en cuenta" |
 
 ### Exámenes
 | Método | Ruta | Descripción |
@@ -41,7 +55,8 @@ Todas las rutas, excepto `health` y `docs`, requieren `Authorization: Bearer <JW
 ### Planes de estudio por día — RF08, HU08
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/api/planes` | Genera un plan con IA. `alcance`: `general`, `materia`, `apuntes` o `examen`; `dias`, `horasPorDia`, `horaInicio`, `finesDeSemana` |
+| POST | `/api/planes/vista-previa` | La IA propone el plan y **no se guarda**. Mismas opciones que abajo |
+| POST | `/api/planes` | Guarda un plan. `alcance`: `general`, `materia`, `apuntes` o `examen`; `dias`, `horasPorDia`, `horaInicio`, `finesDeSemana`; con materia o examen también `periodoId`, `apunteIds`, `temas`, `temasPrioridad` y `prioridad` (`baja`, `media`, `alta`). Si incluye `propuesta` (la vista previa aprobada y editada), se valida otra vez y se guarda **sin llamar a la IA** |
 | GET | `/api/planes` | Historial con avance (`completadas`, `totalActividades`, `atrasadas`) |
 | GET · DELETE | `/api/planes/:id` | Plan con sus actividades día por día |
 | PATCH | `/api/planes/:id/actividades/:actividadId` | Marcar una actividad como hecha o pendiente |
@@ -51,11 +66,13 @@ Todas las rutas, excepto `health` y `docs`, requieren `Authorization: Bearer <JW
 ### Cuestionarios
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/api/cuestionarios` | Genera preguntas de opción múltiple. `fuente`: `apuntes` (con `apunteIds`), `materia` o `examen`; `numPreguntas` (3 a 20); `dificultad` |
+| POST | `/api/cuestionarios` | Genera preguntas de opción múltiple. `fuente`: `apuntes` (con `apunteIds`), `materia` o `examen`; con materia o examen se pueden elegir `apunteIds`, `periodoId` y `temas`; `numPreguntas` (3 a 20); `dificultad`. Cada pregunta guarda de qué apunte salió |
 | GET | `/api/cuestionarios` | Lista con intentos y mejor puntaje |
 | GET · DELETE | `/api/cuestionarios/:id` | Preguntas **sin la respuesta correcta** e historial de intentos |
-| POST | `/api/cuestionarios/:id/intentos` | Califica en el servidor y devuelve la revisión con explicaciones y los temas débiles |
-| GET | `/api/cuestionarios/:id/revision` | Revisión del último intento |
+| POST | `/api/cuestionarios/:id/intentos` | Califica en el servidor y devuelve la revisión y un `analisis`: temas con fallos, **apuntes recomendados**, **comparación con el intento anterior** y preguntas falladas sin tarjeta |
+| GET | `/api/cuestionarios/:id/revision` | Revisión y análisis del último intento |
+| POST | `/api/cuestionarios/:id/tarjetas` | Crea tarjetas con las preguntas falladas (respuesta correcta + explicación). No duplica |
+| GET · POST | `/api/cuestionarios/:id/repaso` | Propone un horario libre para repasar · Lo agrega al plan de ese día o crea un plan de repaso |
 
 ### Tarjetas de memoria
 | Método | Ruta | Descripción |
@@ -97,6 +114,7 @@ sequenceDiagram
 - **Opciones mezcladas**: en los cuestionarios, el servidor mezcla las opciones para que la correcta no quede siempre en la misma posición.
 - **Repaso espaciado (SM-2 simplificado)**: "Fácil" programa el siguiente repaso en 2, 5 y luego intervalo × facilidad días; "Difícil" lo acorta; "No lo recuerdo" lo devuelve a hoy y baja la facilidad (mínimo 1.3).
 - **Temas débiles**: los temas de las preguntas falladas se guardan en cada intento y reciben más tiempo en el plan de preparación del examen.
+- **Secciones conectadas**: para un plan de una materia o examen, la IA recibe los apuntes elegidos, las tareas pendientes, los exámenes próximos, los temas débiles, las tarjetas por repasar y los temas que el estudiante quiere priorizar.
 - **Proveedores**: `AI_PROVIDER` = `gemini` (por defecto), `claude`, `openai` o `simulado`. El modo `simulado` no necesita internet ni clave y genera datos de ejemplo para pruebas y demostraciones.
 - **Límites**: 10 solicitudes de IA por minuto por usuario (`AI_RATE_LIMIT`) y 90 segundos de espera máxima (`AI_TIMEOUT_MS`).
 - Las instrucciones que se envían al modelo están en `src/services/ia/prompts.js`.
@@ -107,17 +125,17 @@ sequenceDiagram
 ms-academico/
 ├── src/
 │   ├── config/        env.js · db.js (pool y transacciones)
-│   ├── routes/        index · materias · tareas · apuntes · ia · estudio (exámenes, planes, cuestionarios, tarjetas)
-│   ├── controllers/   materia · tarea · apunte · examen · plan · cuestionario · flashcard · ia · general
-│   ├── services/      materia · tarea · apunte · examen · plan · cuestionario · flashcard · agenda · ia
+│   ├── routes/        index · materias · tareas · apuntes · periodos · ia · estudio (exámenes, planes, cuestionarios, tarjetas)
+│   ├── controllers/   materia · tarea · apunte · periodo · examen · plan · cuestionario · flashcard · ia · general
+│   ├── services/      materia · tarea · apunte · periodo · contexto · examen · plan · cuestionario · flashcard · agenda · ia
 │   │   └── ia/        proveedores.js (Gemini, Claude, OpenAI, simulado) · prompts.js · contexto.js
-│   ├── models/        materia · tarea · apunte · examen · plan · cuestionario · flashcard · agenda · resumen
+│   ├── models/        materia · tarea · apunte · periodo · examen · plan · cuestionario · flashcard · agenda · resumen
 │   ├── middlewares/   verificarToken · limiteIa · manejoErrores
 │   ├── utils/         AppError · validar · fechas · sql · erroresPg
 │   ├── docs/          openapi.js (Swagger)
 │   ├── app.js
 │   └── server.js
-├── tests/             32 pruebas (node --test) sin base de datos ni clave de IA
+├── tests/             38 pruebas (node --test) sin base de datos ni clave de IA
 ├── Dockerfile
 └── package.json
 ```
@@ -146,9 +164,9 @@ Todas las respuestas de error tienen el mismo formato:
 |---|---|
 | 400 | `VALIDACION`, `ID_INVALIDO`, `JSON_INVALIDO` |
 | 401 | `TOKEN_REQUERIDO`, `TOKEN_INVALIDO`, `TOKEN_EXPIRADO`, `USUARIO_NO_EXISTE` |
-| 404 | `MATERIA_NO_ENCONTRADA`, `TAREA_NO_ENCONTRADA`, `APUNTE_NO_ENCONTRADO`, `EXAMEN_NO_ENCONTRADO`, `PLAN_NO_ENCONTRADO`, `CUESTIONARIO_NO_ENCONTRADO`, `TARJETA_NO_ENCONTRADA` |
-| 409 | `MATERIA_DUPLICADA`, `TAREA_COMPLETADA` |
-| 422 | `SIN_TAREAS_PENDIENTES`, `SIN_CONTENIDO`, `SIN_APUNTES`, `EXAMEN_PASADO`, `NADA_QUE_REORGANIZAR` |
+| 404 | `PERIODO_NO_ENCONTRADO`, `MATERIA_NO_ENCONTRADA`, `TAREA_NO_ENCONTRADA`, `APUNTE_NO_ENCONTRADO`, `EXAMEN_NO_ENCONTRADO`, `PLAN_NO_ENCONTRADO`, `CUESTIONARIO_NO_ENCONTRADO`, `TARJETA_NO_ENCONTRADA` |
+| 409 | `MATERIA_DUPLICADA`, `PERIODO_DUPLICADO`, `TAREA_COMPLETADA` |
+| 422 | `SIN_TAREAS_PENDIENTES`, `SIN_CONTENIDO`, `SIN_APUNTES`, `EXAMEN_PASADO`, `NADA_QUE_REORGANIZAR`, `SIN_INTENTOS`, `SIN_FALLADAS` |
 | 429 | `LIMITE_IA`, `IA_LIMITE` |
 | 502 · 503 · 504 | `IA_ERROR`, `IA_CLAVE_INVALIDA`, `IA_MODELO_INVALIDO`, `IA_RESPUESTA_INVALIDA`, `IA_NO_CONFIGURADA`, `IA_TIMEOUT` |
 

@@ -50,3 +50,9 @@ test('construirSet solo incluye los campos enviados y numera los parámetros', (
   assert.equal(r.set, 'titulo = $3, estado = $4');
   assert.deepEqual(r.valores, ['x', 'completada']);
 });
+
+test('listaTexto: limpia, quita repetidos y limita la cantidad', () => {
+  assert.deepEqual(validar({ e: [' sql ', 'sql', '', 'bd'] }, { e: { tipo: 'listaTexto', max: 3 } }).e, ['sql', 'bd']);
+  assert.throws(() => validar({ e: ['a', 'b', 'c'] }, { e: { tipo: 'listaTexto', max: 2 } }), /Datos inválidos/);
+  assert.throws(() => validar({ e: [1] }, { e: { tipo: 'listaTexto' } }), /Datos inválidos/);
+});

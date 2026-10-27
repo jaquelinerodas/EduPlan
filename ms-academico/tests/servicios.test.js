@@ -45,3 +45,21 @@ test('interpretarJson acepta respuestas envueltas en ```json', () => {
   assert.deepEqual(interpretarJson('Claro:\n```json\n{"a": 1}\n```'), { a: 1 });
   assert.equal(interpretarJson('sin json'), null);
 });
+
+test('cuestionario: conserva el apunte de origen solo si es uno de los apuntes usados', () => {
+  const base = { pregunta: 'P', opciones: ['A', 'B', 'C', 'D'], correcta: 0, explicacion: 'x', tema: 'T' };
+  const ID = 'b0000000-0000-0000-0000-000000000001';
+  const [a, b] = normalizarPreguntas([
+    { ...base, apunteId: ID },
+    { ...base, pregunta: 'Q', apunteId: 'inventado' },
+  ], 5, [ID, 'b0000000-0000-0000-0000-000000000002']);
+  assert.equal(a.apunteId, ID);
+  assert.equal(b.apunteId, null);
+  const [c] = normalizarPreguntas([{ ...base, apunteId: null }], 5, [ID]);
+  assert.equal(c.apunteId, ID); // con un solo apunte, todas salen de él
+});
+
+test('temas de un examen: uno por línea o con punto y coma, sin viñetas', () => {
+  const { temasDeTexto } = require('../src/services/ia/contexto');
+  assert.deepEqual(temasDeTexto('- Normalización (1FN, 2FN)\n2. Índices; 3FN\n\n'), ['Normalización (1FN, 2FN)', 'Índices', '3FN']);
+});
