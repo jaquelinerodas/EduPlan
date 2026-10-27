@@ -25,11 +25,11 @@ El acceso se hace con **OAuth 2.0 (Google)** o con **correo y contraseña**, y l
 | Calendario | Tareas, exámenes y sesiones de estudio en vista mensual, semanal o diaria |
 | Tareas | Crear, editar y filtrar por materia, estado, prioridad y fecha. **Completar pide confirmación y es definitivo** |
 | Exámenes | Registrar fecha y temas, crear un plan de preparación y practicar con cuestionarios |
-| Materias | Ver pendientes, completadas, vencidas, avance, próximo examen, apuntes y tarjetas de cada materia |
-| Apuntes | Escribir por materia, buscar y **resumir con IA**; crear un cuestionario o tarjetas desde el apunte |
-| Plan de estudio (IA) | Plan **por días** sobre todas las tareas, una materia, temas de apuntes o un examen; marcar avance y **reorganizar la semana** |
-| Cuestionarios (IA) | Preguntas de opción múltiple sobre los apuntes; calificación y explicación de cada error |
-| Tarjetas de memoria (IA) | Flashcards generadas desde apuntes con **repaso espaciado** (No lo recuerdo / Difícil / Fácil) |
+| Materias | Agrupadas por **semestre o bloque**; pendientes, completadas, vencidas, avance, próximo examen, apuntes y tarjetas |
+| Apuntes | Organizados por **semestre, bloque o carpeta → materia**, con favoritos, etiquetas y vistas *Recientes*, *Favoritos* y *Por repasar*; lectura con formato y código; **resumen con IA** |
+| Plan de estudio (IA) | **Asistente en 3 pasos** (objetivo, disponibilidad, confirmación): elegir materia, semestre, temas, temas a priorizar y prioridad; **vista previa editable** antes de guardar; marcar avance y **reorganizar la semana** |
+| Cuestionarios (IA) | Preguntas sobre los apuntes **o temas elegidos** de una materia o examen; calificación con explicaciones y después: temas fallados, **apuntes recomendados**, **tarjetas de las preguntas falladas**, **sesión de repaso en el plan** y **comparación con el intento anterior** |
+| Tarjetas de memoria (IA) | Escritas a mano o generadas desde un apunte; **repaso espaciado** (No lo recuerdo / Difícil / Fácil) con **Atrás y Siguiente** |
 | Alertas | Avisos de vencimientos, exámenes, actividades atrasadas y repasos; notificaciones del navegador con permiso |
 | Administración | Estado de los microservicios, la base de datos y la IA (rol administrador) |
 
@@ -58,13 +58,14 @@ Esquema de BD: `auth`. Detalle en **[ms-auth/README.md](ms-auth/README.md)**.
 |---|---|---|
 | Materias | `GET/POST /api/materias` · `GET/PUT/DELETE /api/materias/:id` | RF03 |
 | Tareas | `GET/POST /api/tareas` (filtros) · `PUT/DELETE /api/tareas/:id` · `PATCH /api/tareas/:id/estado` | RF04, RF06 |
-| Apuntes | `GET/POST /api/apuntes` · `GET/PUT/DELETE /api/apuntes/:id` | RF05 |
+| Apuntes | `GET/POST /api/apuntes` (filtros `periodoId`, `vista`, `etiqueta`, `buscar`) · `GET/PUT/DELETE /api/apuntes/:id` · `GET /api/apuntes/etiquetas` | RF05 |
+| Semestres y bloques | `GET/POST /api/periodos` · `PUT/DELETE /api/periodos/:id` | — |
 | Resumen IA | `POST /api/ia/resumen/:apunteId` | RF07 |
 | Exámenes | `GET/POST /api/examenes` · `GET/PUT/DELETE /api/examenes/:id` | — |
-| Planes (IA) | `GET/POST /api/planes` · `GET/DELETE /api/planes/:id` · `PATCH .../actividades/:id` · `POST .../reorganizar` · `POST .../aplicar` | RF08 |
-| Cuestionarios (IA) | `GET/POST /api/cuestionarios` · `GET/DELETE /:id` · `POST /:id/intentos` · `GET /:id/revision` | — |
+| Planes (IA) | `POST /api/planes/vista-previa` · `GET/POST /api/planes` · `GET/DELETE /api/planes/:id` · `PATCH .../actividades/:id` · `POST .../reorganizar` · `POST .../aplicar` | RF08 |
+| Cuestionarios (IA) | `GET/POST /api/cuestionarios` · `GET/DELETE /:id` · `POST /:id/intentos` · `GET /:id/revision` · `POST /:id/tarjetas` · `GET/POST /:id/repaso` | — |
 | Tarjetas (IA) | `GET/POST /api/flashcards` · `POST /generar` · `GET /resumen` · `PUT/DELETE /:id` · `POST /:id/repaso` | — |
-| Agenda | `GET /api/alertas` · `GET /api/calendario?desde&hasta` · `GET /api/resumen` | — |
+| Agenda y contexto | `GET /api/alertas` · `GET /api/calendario?desde&hasta` · `GET /api/resumen` · `GET /api/contexto` | — |
 | Monitoreo | `GET /api/health` · `GET /api/docs` | HU10 |
 
 Todas las rutas, excepto `health` y `docs`, exigen `Authorization: Bearer <JWT>` y solo devuelven datos del usuario del token (RF09). Esquema de BD: `academico`. Detalle en **[ms-academico/README.md](ms-academico/README.md)**.
@@ -89,6 +90,9 @@ PostgreSQL 16 compartido, con un **esquema por microservicio** y un **usuario de
 
 ```mermaid
 erDiagram
+    USUARIOS ||--o{ PERIODOS : organiza
+    PERIODOS |o--o{ MATERIAS : agrupa
+    PERIODOS |o--o{ APUNTES : agrupa
     USUARIOS ||--o{ MATERIAS : registra
     MATERIAS ||--o{ TAREAS : agrupa
     MATERIAS ||--o{ APUNTES : agrupa
@@ -99,13 +103,14 @@ erDiagram
     EXAMENES ||--o{ PLANES_ESTUDIO : prepara
     USUARIOS ||--o{ CUESTIONARIOS : genera
     CUESTIONARIOS ||--o{ CUESTIONARIO_INTENTOS : registra
+    CUESTIONARIOS |o--o{ FLASHCARDS : "preguntas falladas"
 ```
 
 ## Estructura del repositorio
 
 ```
 eduplan/
-├── database/          # Modelo relacional, scripts de inicialización (01, 02, 03) y datos de prueba
+├── database/          # Modelo relacional, scripts de inicialización (01 a 04) y datos de prueba
 ├── ms-auth/           # Microservicio 1: Google OAuth 2.0, correo y contraseña, JWT
 ├── ms-academico/      # Microservicio 2: materias, tareas, exámenes, apuntes e IA
 ├── frontend/          # SPA: HTML, CSS y JavaScript
@@ -147,18 +152,20 @@ Usuario de prueba: **ana.lopez@ejemplo.com** · contraseña **Demo2026**.
 | http://localhost/auth/docs | Swagger de ms-auth |
 | http://localhost/api/health · /auth/health | Estado de cada microservicio |
 
-**Actualizar una base existente** a la versión 2 (sin perder datos):
+**Actualizar una base existente** a las versiones 2 y 3 (sin perder datos; se pueden ejecutar varias veces):
 
 ```bash
 docker compose cp database/init/03_mejoras.sql postgres:/tmp/03_mejoras.sql
 docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/03_mejoras.sql
+docker compose cp database/init/04_organizacion.sql postgres:/tmp/04_organizacion.sql
+docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/04_organizacion.sql
 ```
 
 ## Pruebas
 
 ```bash
 cd ms-auth && npm install && npm test        # 20 pruebas
-cd ms-academico && npm install && npm test   # 32 pruebas
+cd ms-academico && npm install && npm test   # 38 pruebas
 ```
 
 No necesitan base de datos ni clave de IA: esas dependencias se simulan. Con `AI_PROVIDER=simulado` todo el sistema funciona sin clave, con respuestas de ejemplo.
@@ -170,6 +177,7 @@ No necesitan base de datos ni clave de IA: esas dependencias se simulan. Con `AI
 - [x] **Fase 3** · ms-academico (CRUD, filtros, IA)
 - [x] **Fase 4** · Frontend y proxy inverso Nginx
 - [x] **Versión 2** · Correo y contraseña, calendario, exámenes, planes por día, cuestionarios, tarjetas y alertas
+- [x] **Versión 3** · Semestres y bloques, apuntes organizados, temas elegidos, acciones después de un cuestionario, asistente de planes con vista previa
 - [ ] **Fase 5** · HTTPS, cierre de puertos internos y despliegue
 - [ ] **Fase 6** · Colección de Postman y revisión final
 
