@@ -24,6 +24,8 @@ router.use(verificarToken);
 router.get('/resumen', general.resumen);
 router.get('/alertas', general.alertas);
 router.get('/calendario', general.calendario);
+router.get('/contexto', general.contexto);
+router.use('/periodos', require('./periodos.routes'));
 router.use('/materias', require('./materias.routes'));
 router.use('/tareas', require('./tareas.routes'));
 router.use('/apuntes', require('./apuntes.routes'));

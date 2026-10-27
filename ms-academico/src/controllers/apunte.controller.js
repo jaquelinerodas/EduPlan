@@ -4,6 +4,9 @@ module.exports = {
   async listar(req, res) {
     res.json({ apuntes: await apunteService.listar(req.usuario.id, req.query) });
   },
+  async etiquetas(req, res) {
+    res.json({ etiquetas: await apunteService.etiquetas(req.usuario.id) });
+  },
   async obtener(req, res) {
     res.json({ apunte: await apunteService.obtener(req.usuario.id, req.params.id) });
   },

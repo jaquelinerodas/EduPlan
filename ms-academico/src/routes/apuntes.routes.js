@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/', c.listar);
 router.post('/', c.crear);
+router.get('/etiquetas', c.etiquetas);
 router.get('/:id', c.obtener);
 router.put('/:id', c.actualizar);
 router.delete('/:id', c.eliminar);

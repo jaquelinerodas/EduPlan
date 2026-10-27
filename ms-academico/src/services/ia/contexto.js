@@ -24,15 +24,61 @@ async function apuntesPorId(usuarioId, ids) {
   return rows;
 }
 
-async function apuntesDeMateria(usuarioId, materiaId) {
+async function apuntesDeMateria(usuarioId, materiaId, periodoId = null) {
   const { rows } = await db.query(
     `SELECT a.id, a.titulo, a.contenido, a.materia_id AS "materiaId", m.nombre AS materia
        FROM academico.apuntes a JOIN academico.materias m ON m.id = a.materia_id
       WHERE a.usuario_id = $1 AND a.materia_id = $2
+        AND ($3::uuid IS NULL OR a.periodo_id = $3)
       ORDER BY a.actualizado_en DESC LIMIT 15`,
+    [usuarioId, materiaId, periodoId]
+  );
+  return rows;
+}
+
+/**
+ * Apuntes elegidos por el estudiante para una materia. Si no eligió ninguno,
+ * se usan los de la materia (filtrados por semestre o bloque si lo indicó).
+ */
+async function apuntesElegidos(usuarioId, materiaId, { apunteIds = [], periodoId = null } = {}) {
+  if (!apunteIds.length) return apuntesDeMateria(usuarioId, materiaId, periodoId);
+  const apuntes = await apuntesPorId(usuarioId, apunteIds);
+  if (apuntes.some((a) => a.materiaId !== materiaId)) {
+    throw new AppError('Datos inválidos', 400, 'VALIDACION', ['Los apuntes elegidos deben ser de la misma materia']);
+  }
+  return apuntes;
+}
+
+/** Temas de un examen: uno por línea o separados por punto y coma. */
+const temasDeTexto = (textoTemas) => (textoTemas || '')
+  .split(/\n|;/)
+  .map((t) => t.replace(/^\s*(?:[-•*]|\d+[.)])\s+/, '').trim())
+  .filter(Boolean)
+  .slice(0, 30);
+
+/** Exámenes próximos de una materia (o de todas). */
+async function examenesProximos(usuarioId, materiaId = null) {
+  const { rows } = await db.query(
+    `SELECT e.id, e.titulo, e.fecha, e.temas, m.nombre AS materia, e.materia_id AS "materiaId"
+       FROM academico.examenes e JOIN academico.materias m ON m.id = e.materia_id
+      WHERE e.usuario_id = $1 AND e.fecha >= NOW() AND ($2::uuid IS NULL OR e.materia_id = $2)
+      ORDER BY e.fecha LIMIT 5`,
     [usuarioId, materiaId]
   );
   return rows;
+}
+
+/** Tarjetas de memoria que toca repasar hoy (por materia o en total). */
+async function tarjetasPendientes(usuarioId, materiaId = null) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS total,
+            COALESCE(array_agg(DISTINCT a.titulo) FILTER (WHERE a.titulo IS NOT NULL), '{}') AS apuntes
+       FROM academico.flashcards f LEFT JOIN academico.apuntes a ON a.id = f.apunte_id
+      WHERE f.usuario_id = $1 AND f.proximo_repaso <= CURRENT_DATE
+        AND ($2::uuid IS NULL OR f.materia_id = $2)`,
+    [usuarioId, materiaId]
+  );
+  return rows[0];
 }
 
 async function materia(usuarioId, materiaId) {
@@ -74,8 +120,11 @@ function textoApuntes(apuntes, limite = LIMITE_CARACTERES) {
   if (!apuntes.length) return '';
   const porApunte = Math.max(800, Math.floor(limite / apuntes.length));
   return apuntes
-    .map((a) => `### ${a.titulo} (${a.materia})\n${a.contenido.slice(0, porApunte)}`)
+    .map((a) => `### ${a.titulo} (${a.materia}) [apunteId=${a.id}]\n${a.contenido.slice(0, porApunte)}`)
     .join('\n\n');
 }
 
-module.exports = { apuntesPorId, apuntesDeMateria, materia, examen, temasDebiles, textoApuntes };
+module.exports = {
+  apuntesPorId, apuntesDeMateria, apuntesElegidos, materia, examen, temasDeTexto,
+  examenesProximos, tarjetasPendientes, temasDebiles, textoApuntes,
+};

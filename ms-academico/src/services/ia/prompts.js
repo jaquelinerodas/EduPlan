@@ -77,7 +77,11 @@ function mensajePlan(c) {
     `Hora de inicio diaria: ${c.horaInicio}. Máximo ${c.horasPorDia} horas de estudio por día.`,
     c.finesDeSemana ? 'Se puede estudiar sábado y domingo.' : 'NO programes actividades sábado ni domingo.',
     `Enfoque del plan: ${c.enfoque}`,
-  ];
+    c.intensidad ? `Intensidad elegida: ${c.intensidad}.` : '',
+  ].filter(Boolean);
+  if (c.temasPrioridad) {
+    partes.push('', `Temas que el estudiante quiere PRIORIZAR (dales más tiempo y empieza por ellos): ${c.temasPrioridad}`);
+  }
   if (c.materias.length) {
     partes.push('', 'Materias:', ...c.materias.map((m) => `- materiaId=${m.id} · ${m.nombre}`));
   }
@@ -87,6 +91,13 @@ function mensajePlan(c) {
   }
   if (c.temasDebiles.length) {
     partes.push('', `Temas débiles según sus cuestionarios (dales más tiempo): ${c.temasDebiles.map((t) => t.tema).join(', ')}`);
+  }
+  if (c.examenesProximos?.length) {
+    partes.push('', 'Exámenes próximos (ténlos en cuenta al repartir el tiempo):',
+      ...c.examenesProximos.map((e) => `- "${e.titulo}" de ${e.materia} el ${formatoFecha.format(e.fecha)}`));
+  }
+  if (c.tarjetasPendientes?.total) {
+    partes.push('', `Tiene ${c.tarjetasPendientes.total} tarjetas de memoria por repasar hoy${c.tarjetasPendientes.apuntes.length ? ` (de: ${c.tarjetasPendientes.apuntes.slice(0, 5).join(', ')})` : ''}. Incluye un bloque corto de "repaso" de tarjetas en los primeros días.`);
   }
   partes.push('', c.tareas.length ? 'Tareas pendientes:' : 'No hay tareas pendientes en este rango.', ...c.tareas.map(lineaTarea));
   if (c.apuntesTexto) {
@@ -144,17 +155,21 @@ const SISTEMA_CUESTIONARIO = [
       "opciones": ["opción A", "opción B", "opción C", "opción D"],
       "correcta": 0,
       "explicacion": "por qué la respuesta correcta es correcta y por qué las otras no (máximo 3 oraciones)",
-      "tema": "tema corto al que pertenece la pregunta (2 a 4 palabras)" } ] }`,
+      "tema": "tema corto al que pertenece la pregunta (2 a 4 palabras)",
+      "apunteId": "id del apunte de donde sale la pregunta (aparece como [apunteId=...]) o null" } ] }`,
   'Reglas:',
   '- Exactamente 4 opciones por pregunta, todas plausibles y distintas; solo una correcta. "correcta" es el índice (0 a 3).',
   '- No uses opciones como "todas las anteriores" o "ninguna de las anteriores".',
   '- Cubre temas variados del material y no repitas preguntas.',
+  '- Si el estudiante eligió temas, todas las preguntas deben ser de esos temas.',
+  '- Copia el apunteId exactamente como aparece en el material; si la pregunta no sale de un apunte, usa null.',
 ].join('\n');
 
 function mensajeCuestionario(c) {
   return [
     `Crea ${c.numPreguntas} preguntas de dificultad ${DIFICULTAD[c.dificultad]}.`,
     c.examen ? `Son para preparar el examen "${c.examen.titulo}" de ${c.examen.materia}.${c.examen.temas ? ` Temas del examen:\n${c.examen.temas}` : ''}` : '',
+    c.temas?.length ? `Temas elegidos por el estudiante (pregunta SOLO de estos): ${c.temas.join('; ')}.` : '',
     c.temasDebiles?.length ? `Incluye más preguntas de estos temas débiles: ${c.temasDebiles.map((t) => t.tema).join(', ')}.` : '',
     '',
     'Material de estudio:',

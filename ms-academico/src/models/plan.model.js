@@ -8,6 +8,8 @@ const SELECT_PLAN = `
          p.horas_por_dia     AS "horasPorDia",
          p.tareas_incluidas  AS "tareasIncluidas",
          p.apuntes_incluidos AS "apuntesIncluidos",
+         p.temas_prioridad AS "temasPrioridad", p.prioridad, p.cuestionario_id AS "cuestionarioId",
+         p.periodo_id AS "periodoId",
          p.modelo_ia AS "modeloIa", p.creado_en AS "creadoEn", p.reorganizado_en AS "reorganizadoEn",
          p.materia_id AS "materiaId", m.nombre AS "materia", m.color AS "materiaColor",
          p.examen_id AS "examenId", e.titulo AS "examen", e.fecha AS "examenFecha",
@@ -49,11 +51,13 @@ async function crear(usuarioId, p) {
     const { rows } = await cliente.query(
       `INSERT INTO academico.planes_estudio
          (usuario_id, titulo, alcance, materia_id, examen_id, fecha_inicio, fecha_fin, contenido,
-          consejos, horas_por_dia, tareas_incluidas, apuntes_incluidos, modelo_ia)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid[], $12::uuid[], $13)
+          consejos, horas_por_dia, tareas_incluidas, apuntes_incluidos, modelo_ia,
+          periodo_id, temas_prioridad, prioridad, cuestionario_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid[], $12::uuid[], $13, $14, $15, COALESCE($16, 'media'), $17)
        RETURNING id`,
       [usuarioId, p.titulo, p.alcance, p.materiaId ?? null, p.examenId ?? null, p.fechaInicio, p.fechaFin,
-        p.resumen, p.consejos, p.horasPorDia, p.tareaIds, p.apunteIds, p.modeloIa]
+        p.resumen, p.consejos, p.horasPorDia, p.tareaIds, p.apunteIds, p.modeloIa,
+        p.periodoId ?? null, p.temasPrioridad ?? null, p.prioridad ?? null, p.cuestionarioId ?? null]
     );
     await insertarActividades(cliente, rows[0].id, usuarioId, p.actividades);
     return rows[0].id;
@@ -114,9 +118,45 @@ async function reemplazarPendientes(planId, usuarioId, nuevas, fechaFin) {
   return obtener(planId, usuarioId);
 }
 
+/** Plan más reciente que incluye esa fecha (para agregar una sesión de repaso). */
+async function planEnFecha(usuarioId, fecha) {
+  const { rows } = await db.query(
+    `SELECT id, titulo FROM academico.planes_estudio
+      WHERE usuario_id = $1 AND $2::date BETWEEN fecha_inicio AND fecha_fin
+      ORDER BY creado_en DESC LIMIT 1`,
+    [usuarioId, fecha]
+  );
+  return rows[0] || null;
+}
+
+/** Hora en que termina la última actividad del día en cualquiera de sus planes. */
+async function finDelDia(usuarioId, fecha) {
+  const { rows } = await db.query(
+    `SELECT to_char(MAX(hora_fin), 'HH24:MI') AS fin
+       FROM academico.plan_actividades WHERE usuario_id = $1 AND fecha = $2`,
+    [usuarioId, fecha]
+  );
+  return rows[0].fin;
+}
+
+async function agregarActividad(planId, usuarioId, actividad) {
+  await db.transaccion(async (cliente) => {
+    await insertarActividades(cliente, planId, usuarioId, [actividad]);
+    await cliente.query(
+      `UPDATE academico.planes_estudio SET fecha_fin = GREATEST(fecha_fin, $3::date)
+        WHERE id = $1 AND usuario_id = $2`,
+      [planId, usuarioId, actividad.fecha]
+    );
+  });
+  return obtener(planId, usuarioId);
+}
+
 async function eliminar(id, usuarioId) {
   const { rowCount } = await db.query('DELETE FROM academico.planes_estudio WHERE id = $1 AND usuario_id = $2', [id, usuarioId]);
   return rowCount > 0;
 }
 
-module.exports = { crear, listar, obtener, actividades, marcarActividad, reemplazarPendientes, eliminar };
+module.exports = {
+  crear, listar, obtener, actividades, marcarActividad, reemplazarPendientes, eliminar,
+  planEnFecha, finDelDia, agregarActividad,
+};

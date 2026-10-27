@@ -7,6 +7,7 @@ const ESQUEMA = {
   docente: { tipo: 'texto', max: 120 },
   descripcion: { tipo: 'texto', max: 2000 },
   color: { tipo: 'color' },
+  periodoId: { tipo: 'uuid' },
 };
 
 const noEncontrada = () => new AppError('Materia no encontrada', 404, 'MATERIA_NO_ENCONTRADA');

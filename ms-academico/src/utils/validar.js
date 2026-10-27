@@ -79,6 +79,16 @@ function validarCampo(nombre, valor, regla) {
       if (!valor.every((v) => typeof v === 'string' && REGEX.uuid.test(v))) return { error: `${nombre} contiene ids inválidos` };
       return { valor: [...new Set(valor.map((v) => v.toLowerCase()))] };
     }
+    case 'listaTexto': {
+      if (!Array.isArray(valor)) return { error: `${nombre} debe ser una lista` };
+      if (!valor.every((v) => typeof v === 'string')) return { error: `${nombre} solo admite textos` };
+      const limpios = [...new Set(valor.map((v) => v.trim()).filter(Boolean))];
+      if (regla.max && limpios.length > regla.max) return { error: `${nombre} admite máximo ${regla.max} elementos` };
+      if (regla.maxLargo && limpios.some((v) => v.length > regla.maxLargo)) {
+        return { error: `cada elemento de ${nombre} admite máximo ${regla.maxLargo} caracteres` };
+      }
+      return { valor: limpios };
+    }
     default:
       throw new Error(`Tipo de regla desconocido: ${regla.tipo}`);
   }

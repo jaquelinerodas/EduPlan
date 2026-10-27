@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const resumenModel = require('../models/resumen.model');
 const agendaService = require('../services/agenda.service');
+const contextoService = require('../services/contexto.service');
 const { config } = require('../config/env');
 const { version } = require('../../package.json');
 
@@ -47,4 +48,9 @@ async function calendario(req, res) {
   res.json({ eventos: await agendaService.calendario(req.usuario.id, req.query) });
 }
 
-module.exports = { health, resumen, alertas, calendario };
+/** GET /api/contexto?materiaId=&examenId=: lo que la IA tomará en cuenta. */
+async function contexto(req, res) {
+  res.json({ contexto: await contextoService.obtener(req.usuario.id, req.query) });
+}
+
+module.exports = { health, resumen, alertas, calendario, contexto };

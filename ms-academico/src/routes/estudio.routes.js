@@ -18,7 +18,8 @@ examenes.delete('/:id', examen.eliminar);
 
 const planes = Router();
 planes.get('/', plan.listar);
-planes.post('/', limiteIa, plan.generar);
+planes.post('/vista-previa', limiteIa, plan.vistaPrevia);
+planes.post('/', (req, res, next) => (req.body?.propuesta ? next() : limiteIa(req, res, next)), plan.generar);
 planes.get('/:id', plan.obtener);
 planes.delete('/:id', plan.eliminar);
 planes.patch('/:id/actividades/:actividadId', plan.marcarActividad);
@@ -32,6 +33,9 @@ cuestionarios.get('/:id', cuestionario.obtener);
 cuestionarios.delete('/:id', cuestionario.eliminar);
 cuestionarios.post('/:id/intentos', cuestionario.responder);
 cuestionarios.get('/:id/revision', cuestionario.ultimaRevision);
+cuestionarios.post('/:id/tarjetas', cuestionario.crearTarjetas);
+cuestionarios.get('/:id/repaso', cuestionario.sugerirRepaso);
+cuestionarios.post('/:id/repaso', cuestionario.programarRepaso);
 
 const tarjetas = Router();
 tarjetas.get('/', tarjeta.listar);

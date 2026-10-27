@@ -18,8 +18,14 @@ function traducirErrorPg(err) {
       if (err.constraint === 'uq_materias_usuario_nombre') {
         return new AppError('Ya tienes una materia con ese nombre', 409, 'MATERIA_DUPLICADA');
       }
+      if (err.constraint === 'uq_periodos_usuario_nombre') {
+        return new AppError('Ya tienes un semestre o bloque con ese nombre', 409, 'PERIODO_DUPLICADO');
+      }
       return new AppError('El registro ya existe', 409, 'DUPLICADO');
     case '23503':
+      if ((err.constraint || '').endsWith('_periodo_usuario')) {
+        return new AppError('El semestre o bloque no existe', 404, 'PERIODO_NO_ENCONTRADO');
+      }
       if ((err.constraint || '').endsWith('_materia_usuario')) {
         return new AppError('La materia no existe', 404, 'MATERIA_NO_ENCONTRADA');
       }

@@ -8,7 +8,7 @@ const SELECT_TARJETA = `
          f.ultimo_repaso AS "ultimoRepaso", f.creado_en AS "creadoEn",
          (f.proximo_repaso <= CURRENT_DATE) AS "pendiente",
          f.materia_id AS "materiaId", m.nombre AS "materia", m.color AS "materiaColor",
-         f.apunte_id AS "apunteId", a.titulo AS "apunte"
+         f.apunte_id AS "apunteId", a.titulo AS "apunte", f.cuestionario_id AS "cuestionarioId"
     FROM academico.flashcards f
     JOIN academico.materias m ON m.id = f.materia_id
     LEFT JOIN academico.apuntes a ON a.id = f.apunte_id`;
@@ -38,9 +38,9 @@ async function crearVarias(usuarioId, materiaId, apunteId, tarjetas) {
     const creadas = [];
     for (const t of tarjetas) {
       const { rows } = await cliente.query(
-        `INSERT INTO academico.flashcards (usuario_id, materia_id, apunte_id, frente, reverso)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [usuarioId, materiaId, apunteId ?? null, t.frente, t.reverso]
+        `INSERT INTO academico.flashcards (usuario_id, materia_id, apunte_id, frente, reverso, cuestionario_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [usuarioId, t.materiaId ?? materiaId, t.apunteId ?? apunteId ?? null, t.frente, t.reverso, t.cuestionarioId ?? null]
       );
       creadas.push(rows[0].id);
     }

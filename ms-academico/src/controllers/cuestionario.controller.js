@@ -16,6 +16,15 @@ module.exports = {
   async ultimaRevision(req, res) {
     res.json(await cuestionarioService.ultimaRevision(req.usuario.id, req.params.id));
   },
+  async crearTarjetas(req, res) {
+    res.status(201).json(await cuestionarioService.crearTarjetasFalladas(req.usuario.id, req.params.id));
+  },
+  async sugerirRepaso(req, res) {
+    res.json({ sugerencia: await cuestionarioService.sugerirRepaso(req.usuario.id, req.params.id) });
+  },
+  async programarRepaso(req, res) {
+    res.status(201).json(await cuestionarioService.programarRepaso(req.usuario.id, req.params.id, req.body));
+  },
   async eliminar(req, res) {
     await cuestionarioService.eliminar(req.usuario.id, req.params.id);
     res.status(204).end();

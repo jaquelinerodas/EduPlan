@@ -4,6 +4,9 @@ module.exports = {
   async generar(req, res) {
     res.status(201).json({ plan: await planService.generar(req.usuario.id, req.body) });
   },
+  async vistaPrevia(req, res) {
+    res.json({ propuesta: await planService.vistaPrevia(req.usuario.id, req.body) });
+  },
   async listar(req, res) {
     res.json({ planes: await planService.listar(req.usuario.id) });
   },
