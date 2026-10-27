@@ -1,4 +1,4 @@
-
+# Variables de entorno (credenciales)
 .env
 .env.*
 !.env.example
@@ -18,3 +18,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Certificados HTTPS (nunca se suben)
+nginx/certs/*.crt
+nginx/certs/*.key
+nginx/certs/*.pem
+nginx/acme/.well-known/
