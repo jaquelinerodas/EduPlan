@@ -5,7 +5,7 @@ Motor: **PostgreSQL 16** · Una sola instancia compartida por los dos microservi
 | Esquema | Dueño | Tablas |
 |---|---|---|
 | `auth` | ms-auth | `usuarios` |
-| `academico` | ms-academico | `materias`, `tareas`, `apuntes`, `examenes`, `planes_estudio`, `plan_actividades`, `cuestionarios`, `cuestionario_intentos`, `flashcards` (+ vista `v_resumen_materias`) |
+| `academico` | ms-academico | `periodos`, `materias`, `tareas`, `apuntes`, `examenes`, `planes_estudio`, `plan_actividades`, `cuestionarios`, `cuestionario_intentos`, `flashcards` (+ vista `v_resumen_materias`) |
 
 ## Estructura de la carpeta
 
@@ -14,7 +14,8 @@ database/
 ├── init/                         # Se ejecuta automáticamente al crear el contenedor
 │   ├── 01_schema.sql             # Esquemas, tipos, tablas, restricciones, índices, triggers y vista
 │   ├── 02_roles.sh               # Usuarios de BD por microservicio (contraseñas desde .env)
-│   └── 03_mejoras.sql            # Versión 2: contraseñas, exámenes, planes por día, cuestionarios, tarjetas
+│   ├── 03_mejoras.sql            # Versión 2: contraseñas, exámenes, planes por día, cuestionarios, tarjetas
+│   └── 04_organizacion.sql       # Versión 3: semestres/bloques, favoritos, etiquetas y conexión entre secciones
 ├── seeds/
 │   └── seed_dev.sql              # Datos de prueba (solo desarrollo)
 ├── queries/
@@ -41,6 +42,20 @@ erDiagram
     USUARIOS ||--o{ CUESTIONARIOS : "genera"
     EXAMENES |o--o{ CUESTIONARIOS : "se practica con"
     CUESTIONARIOS ||--o{ CUESTIONARIO_INTENTOS : "registra"
+    USUARIOS ||--o{ PERIODOS : "organiza"
+    PERIODOS |o--o{ MATERIAS : "agrupa"
+    PERIODOS |o--o{ APUNTES : "agrupa"
+    CUESTIONARIOS |o--o{ FLASHCARDS : "falladas"
+    CUESTIONARIOS |o--o{ PLANES_ESTUDIO : "sesión de repaso"
+
+    PERIODOS {
+        uuid id PK
+        uuid usuario_id FK
+        varchar nombre "único por usuario"
+        varchar tipo "semestre | bloque | carpeta"
+        smallint orden
+        timestamptz creado_en
+    }
 
     USUARIOS {
         uuid id PK
@@ -62,6 +77,7 @@ erDiagram
         varchar docente
         text descripcion
         char color "#RRGGBB"
+        uuid periodo_id FK "semestre o bloque"
         timestamptz creado_en
         timestamptz actualizado_en
     }
@@ -86,6 +102,9 @@ erDiagram
         text contenido
         text resumen_ia "generado por IA"
         timestamptz resumen_generado_en
+        uuid periodo_id FK "semestre, bloque o carpeta"
+        boolean favorito
+        text_array etiquetas "máximo 10"
         timestamptz creado_en
         timestamptz actualizado_en
     }
@@ -93,9 +112,13 @@ erDiagram
         uuid id PK
         uuid usuario_id FK
         varchar titulo
-        varchar alcance "general | materia | apuntes | examen"
+        varchar alcance "general | materia | apuntes | examen | cuestionario"
         uuid materia_id FK
         uuid examen_id FK
+        uuid periodo_id FK
+        uuid cuestionario_id FK
+        text temas_prioridad
+        varchar prioridad "baja | media | alta"
         date fecha_inicio
         date fecha_fin
         text contenido "resumen escrito por la IA"
@@ -211,6 +234,17 @@ El modelo está en **3FN**: cada atributo depende solo de la llave primaria de s
 
 CHECK `ck_usuarios_metodo_acceso`: toda cuenta tiene Google, contraseña o ambos.
 
+### academico.periodos — organización (versión 3)
+| Columna | Tipo | Nulo | Default | Descripción |
+|---|---|---|---|---|
+| id | UUID | No | `gen_random_uuid()` | PK |
+| usuario_id | UUID | No | | FK → `auth.usuarios.id` (ON DELETE CASCADE) |
+| nombre | VARCHAR(80) | No | | Único por usuario, sin importar mayúsculas (`Semestre 2`, `Bloque 1`, `Proyecto final`) |
+| tipo | VARCHAR(10) | No | `'semestre'` | CHECK: `semestre`, `bloque`, `carpeta` |
+| orden | SMALLINT | No | 0 | Posición en el menú |
+
+Las materias y los apuntes tienen `periodo_id` con FK compuesta `(periodo_id, usuario_id)` y `ON DELETE SET NULL (periodo_id)`: si se elimina un semestre, sus materias y apuntes **no se borran**, quedan "sin semestre". Un apunte nuevo toma el semestre de su materia si no se elige otro.
+
 ### academico.materias — RF03, HU02
 | Columna | Tipo | Nulo | Default | Descripción |
 |---|---|---|---|---|
@@ -250,6 +284,9 @@ Trigger `trg_tareas_bloquear_completadas`: si la tarea ya está completada, cual
 | contenido | TEXT | No | | Texto del apunte |
 | resumen_ia | TEXT | Sí | | Último resumen generado por la IA |
 | resumen_generado_en | TIMESTAMPTZ | Sí | | Se llena junto con `resumen_ia` (CHECK) |
+| periodo_id | UUID | Sí | | Semestre, bloque o carpeta (FK compuesta, SET NULL) |
+| favorito | BOOLEAN | No | `FALSE` | Índice parcial `WHERE favorito` |
+| etiquetas | TEXT[] | No | `'{}'` | CHECK: máximo 10. Índice GIN para filtrar |
 | creado_en / actualizado_en | TIMESTAMPTZ | No | `NOW()` | Auditoría |
 
 ### academico.planes_estudio — RF08, HU08
@@ -298,6 +335,9 @@ Trigger `trg_tareas_bloquear_completadas`: si la tarea ya está completada, cual
 | intentos.respuestas | JSONB | Índice elegido en cada pregunta (o `null`) |
 | intentos.correctas / total / puntaje | SMALLINT / NUMERIC(5,2) | CHECK `puntaje BETWEEN 0 AND 100` |
 | intentos.temas_debiles | TEXT[] | Temas fallados; alimentan el plan de preparación de exámenes |
+| temas | TEXT[] | Temas del examen que el estudiante eligió (versión 3) |
+| preguntas[].apunteId | UUID en JSON | Apunte de donde salió cada pregunta (versión 3) |
+| intentos.apuntes_recomendados | UUID[] | Apuntes de las preguntas falladas: se recomiendan para repasar y marcan el apunte como "por repasar" |
 
 ### academico.flashcards
 | Columna | Tipo | Default | Descripción |
@@ -308,6 +348,7 @@ Trigger `trg_tareas_bloquear_completadas`: si la tarea ya está completada, cual
 | intervalo_dias | SMALLINT | 0 | Días hasta el siguiente repaso |
 | facilidad | NUMERIC(4,2) | 2.50 | Factor SM-2 (CHECK entre 1.30 y 3.50) |
 | proximo_repaso | DATE | hoy | Cuándo vuelve a mostrarse |
+| cuestionario_id | UUID | | Si se creó desde preguntas falladas (evita duplicados) |
 
 ### Vista academico.v_resumen_materias
 Por cada materia: total de tareas, pendientes, en progreso, completadas, vencidas y la próxima fecha de entrega. Pensada para el panel principal del frontend.
@@ -321,7 +362,8 @@ Por cada materia: total de tareas, pendientes, en progreso, completadas, vencida
 - **TIMESTAMPTZ** con zona `America/Guatemala` para que las fechas de entrega sean correctas sin importar dónde esté el servidor.
 - **Contraseñas solo como hash scrypt con sal**; los tokens no se guardan (el JWT vive en el cliente y cerrar sesión lo elimina, RF11).
 - **Reglas de negocio en la base**: el trigger de tareas completadas, los CHECK de horarios, puntajes y facilidad, y las FK compuestas de todas las tablas nuevas.
-- **Migración segura**: `03_mejoras.sql` usa `IF NOT EXISTS` y se puede ejecutar varias veces sobre una base con datos.
+- **Migración segura**: `03_mejoras.sql` y `04_organizacion.sql` usan `IF NOT EXISTS` y se pueden ejecutar varias veces sobre una base con datos.
+- **Organización sin perder datos**: semestres y bloques son opcionales; borrarlos deja materias y apuntes "sin semestre" en lugar de borrarlos.
 
 ## Comandos útiles
 
@@ -336,9 +378,11 @@ docker compose logs postgres
 docker compose cp database/seeds/seed_dev.sql postgres:/tmp/seed_dev.sql
 docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/seed_dev.sql
 
-# Actualizar una base existente a la versión 2 (no borra datos)
+# Actualizar una base existente a la versión 2 y 3 (no borra datos)
 docker compose cp database/init/03_mejoras.sql postgres:/tmp/03_mejoras.sql
 docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/03_mejoras.sql
+docker compose cp database/init/04_organizacion.sql postgres:/tmp/04_organizacion.sql
+docker compose exec postgres psql -U eduplan_admin -d eduplan -f /tmp/04_organizacion.sql
 
 # Entrar a la consola SQL
 docker compose exec postgres psql -U eduplan_admin -d eduplan
